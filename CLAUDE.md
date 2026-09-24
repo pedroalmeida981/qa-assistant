@@ -1,7 +1,5 @@
 ﻿# QA Assistant
 
-[![CI](https://github.com/pedroalmeida981/qa-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/pedroalmeida981/qa-assistant/actions/workflows/ci.yml)
-
 Referências:
 - @docs/metodologia-core.md — metodologia universal
 - @docs/tecnica-browser.md — técnica de automação browser
