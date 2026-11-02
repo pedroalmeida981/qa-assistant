@@ -91,6 +91,9 @@ dashboard:
 # ---------------------------------------------------------------------------
 excel:
   file: ""                     # (req.) path of the workbook, relative to this project.yaml
+  # workbooks:                 # (opt.) other workbooks with the same structure (technique-excel.md 1.1), e.g.
+  #   ios: {file: "workbook/plan-ios.xlsx", batches: ["batch_ios_*"]}
+  # a run log goes to one of them by run.workbook or by its file name; otherwise to file:
 
   cases:
     sheets: {}                 # (req.) case ID prefix -> sheet, e.g. {"TC-SHOP-": "Shop"}

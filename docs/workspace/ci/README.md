@@ -69,7 +69,10 @@ every value comes from the workspace's `project.yaml` (`ci:` and `mobile:`). The
    it on the emulator, deletes your comment and closes the issue.
 5. Review the pull request: the run log, the evidence, the proposed bugs and the questions. Edit the run log in the
    pull request (drop or change a proposed bug, remove `"proposed"` to approve it, answer each `Question` with the
-   final status), then merge. `qa-apply.yml` applies it and comments the result.
+   final status), then merge. `qa-apply.yml` applies it and comments the result. A project with more than one
+   workbook (`excel.workbooks`, technique-excel.md §1.1) gets each run log applied to the workbook it names, by
+   `run.workbook` or by its file name; a run log whose workbook cannot be resolved is refused, never applied to the
+   default one.
 
 The runner tests on its emulator (`emulator-5554`) through `adb`, whatever `mobile.serial` and `mobile.input` say:
 `qa-mobile.yml` sets `QA_MOBILE_SERIAL` and `QA_MOBILE_INPUT`, which the device scripts read before `project.yaml`

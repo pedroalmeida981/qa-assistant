@@ -731,6 +731,15 @@ def merged_run_logs(workspace: str, before: str, after: str) -> list[str]:
     return sorted(n for n in out.splitlines() if re.fullmatch(r"runs/batch_[^/]+\.json", n.strip()))
 
 
+def workbook_files(proj: dict) -> list[str]:
+    """excel.file and each file of excel.workbooks (technique-excel.md section 1.1): every workbook a run log can
+    go to, so the commit after applying holds whichever one changed."""
+    excel = proj.get("excel") or {}
+    others = excel.get("workbooks") if isinstance(excel.get("workbooks"), dict) else {}
+    files = [str(excel.get("file") or "")] + [str(w.get("file") or "") for w in others.values() if isinstance(w, dict)]
+    return list(dict.fromkeys(f for f in files if f))
+
+
 def cmd_apply_merged(workspace: str, a) -> int:
     proj = project(workspace)
     tracker = proj.get("tracker")
@@ -757,7 +766,7 @@ def cmd_apply_merged(workspace: str, a) -> int:
         tail = out.splitlines()[-1] if out else ""
         lines.append(f"- `{rel}`: {'applied' if code == 0 else f'adapter exit {code}'}" + (f" -- {tail}" if tail else ""))
         failed = failed or code not in (0, 5)
-    paths = ["tracker"] if tracker != "excel" else [str((proj.get("excel") or {}).get("file") or "")]
+    paths = ["tracker"] if tracker != "excel" else workbook_files(proj)
     for p in paths:
         if p and os.path.exists(os.path.join(workspace, p)):
             wg.git_ok(workspace, "add", "--", p)
