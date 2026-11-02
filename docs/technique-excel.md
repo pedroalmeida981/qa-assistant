@@ -1,7 +1,7 @@
 # Excel technique
 
 > **Layer 2 — Technique for automating Excel workbooks**
-> Version 1.3 · 2026-10-04 · Extracted from a real `qa_lib.py`, used in a client project. Implemented in the universal adapter `adapters/excel/`; in English since plan 8.11.
+> Version 1.4 · 2026-11-02 · Extracted from a real `qa_lib.py`, used in a client project. Implemented in the universal adapter `adapters/excel/`; in English since plan 8.11.
 >
 > Project agnostic: no sheet, column or status name specific to a real workbook lives here. Subordinate to `methodology.md`.
 
@@ -31,6 +31,24 @@ In the adapter: `load()` → `apply_batch()` → `regenerate_active_defects()` �
 To run the whole flow in a workspace: `python -m adapters.excel.apply <workspace> <batch.json>` (from the root of qa-assistant). It exits with 0 (saved, or batch already applied), 2 (cross-check with problems: original untouched, `.REVIEWED.xlsx` separate), 3 (saved, but the recalculation failed), 4 (invalid batch or configuration, or a batch already applied with another content: nothing written; §4 and §5) or 5 (saved and recalculated, but the workbook's summary does not match the direct count; §5).
 
 **Date of the application.** By default, the adapter uses the clock: the date of the notes' label, the report date of new defects, the date of the active view's summary text and the `applied_at` of the control sheet. With `--now YYYY-MM-DDTHH:MM:SS` in `apply` (attribute `now` of `ExcelAdapter`), it uses that instant in all those places, and the same sequence of batches always produces the same cells. It serves to rebuild a workbook from the batches with the date each batch was run (e.g. `examples/demo/rebuild_workbook.py`, which uses the first `ts` of each batch); in a normal session it is not used.
+
+### 1.1 A project with more than one workbook
+
+Some projects keep a second workbook with the same structure, e.g. the same cases run on another platform, each with its own statuses and defects. `excel.file` stays the **default** workbook; the others are named in `excel.workbooks`:
+
+```yaml
+excel:
+  file: "workbook/plan.xlsx"            # the default workbook
+  workbooks:
+    ios:                                # a name of the project's choice ("default" is reserved)
+      file: "workbook/plan-ios.xlsx"
+      batches: ["batch_ios_*"]          # run logs that go to it, by file name (shell patterns)
+      # any other key of excel: overrides the default's for this workbook (e.g. defects:, summary:)
+```
+
+A run log goes to **one** workbook, chosen by everything that names one: `run.workbook` in the run log (methodology §7.1), the `--workbook` option of `apply`, and the `batches` patterns its file name matches. With none of them it goes to the default. They must all agree: a name that is not a key of `excel.workbooks` (nor `default`), a file name matched by the patterns of two workbooks, or two sources naming different workbooks make the batch **invalid** (exit 4, nothing written). A batch is never applied to the default workbook because its workbook could not be resolved.
+
+Each workbook keeps its own record of the batches applied, so applying again changes nothing, as with one workbook. The workspace's apply workflow (`docs/workspace/ci/README.md`) resolves the workbook the same way and commits every workbook the project names. `scripts/validate_project.py` loads each one. The dashboard, `add-cases` and the case library that `run_log.py` checks read the default workbook.
 
 ## 2. Recalculating formulas safely
 

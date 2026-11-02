@@ -1875,10 +1875,20 @@ Why: the first daily-use session on a real workspace (3 cases, a Redmi with the 
 
 Not changed: the results already applied. TC-CHAT-001 of the L46 expects a progressive answer, and its evidence is indirect (a capture in the middle and dumps that failed while the screen animated): a specific review, or a retest with `--samples`, is a decision of the team and is not made here. The button without an accessible name is an observation about the app, kept in the workspace, not a bug. The 15.7 consolidation had dropped the heading of the change log below; it is back.
 
+### 15.9 A run log applied to the workbook it belongs to — done 02.11.2026
+Why: a project kept a second workbook with the same structure for another platform, chosen by hand on another computer. When those run logs reached `main`, the workspace's apply workflow (`workspace_ci.py apply-merged`) applied them to the default workbook: case statuses of one platform were overwritten by the other's, and its defects were created a second time. The workspace was repaired by hand; the framework had no way to say which workbook a run log belongs to.
+
+| ID | Class | Finding | Fix | Test |
+|---|---|---|---|---|
+| D-18 | confirmed defect | `adapters.excel.apply` and `apply-merged` know only `excel.file`: every run log goes to it | `excel.workbooks` (technique-excel.md §1.1): other workbooks by name, each with its file, the `batches` patterns of its run logs and any key of `excel:` it overrides. A run log goes to the one that `run.workbook`, `--workbook` and its file name agree on; otherwise to the default. A name that does not exist, two matching workbooks or two sources that disagree make the batch invalid (exit 4, nothing written), so `apply-merged` fails the job instead of writing the wrong workbook, and it commits every workbook the project names. `validate_project.py` loads each one | `tests/test_workbooks.py` |
+
+Not changed: the dashboard, `add-cases`, the case library of `run_log.py` and the interface read the default workbook. A project with one workbook sees no difference.
+
 ## Change log of this plan
 
 | Date | Change |
 |---|---|
+| 2026-11-02 | 15.9: a run log applied to the workbook it belongs to (`excel.workbooks`, technique-excel.md v1.4 §1.1); the apply workflow fails instead of writing another platform's results into the default workbook. Unit tests 1181 → 1193. |
 | 2026-11-02 | 15.8: daily use of the mobile flow (first session on a real workspace): the case library checked before a result is written, `run_log.py remove`, one check of the target, the route of a mobile-only project, the roles of a build, `compact_context.py`, streaming samples; methodology v2.11, `technique-mobile.md` v1.7. Unit tests 1133 → 1176. |
 | 2026-11-01 | 15.7: consolidation of the audit; methodology v2.10. Unit tests 1116 → 1133. |
 | 2026-11-01 | 15.6: audit of the skills and the workspaces, 14 findings, each reproduced by a test first (one writer at a time per workspace, a guard that does not refuse paths being deleted, folders with unsupported names listed, skills that say where the documents are); methodology v2.9, `qa-ui.md` v1.3. Unit tests 1082 → 1116. |

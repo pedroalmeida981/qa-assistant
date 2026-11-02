@@ -485,7 +485,29 @@ def validate(workspace: str) -> tuple[list[str], list[str]]:
             if not (proj.get("dashboard") or {}).get("states"):
                 warnings.append("dashboard.states is empty: the dashboard treats the 1st status as pending and the "
                                 "others as neutral")
+            problems += other_workbook_problems(workspace, warnings)
     return problems, warnings
+
+
+def other_workbook_problems(workspace: str, warnings: list[str]) -> list[str]:
+    """Each workbook of excel.workbooks loads and cross-checks like the default one (technique-excel.md 1.1)."""
+    from adapters.excel import ConfigError, ExcelAdapter, other_workbooks
+    try:
+        names = list(other_workbooks(ExcelAdapter.project_excel(workspace)))
+    except ConfigError as e:
+        return [f"excel: {e}"]
+    problems = []
+    for name in names:
+        try:
+            ad = ExcelAdapter.from_project(workspace, name)
+            ad.load()
+        except (ConfigError, FileNotFoundError, KeyError) as e:
+            problems.append(f"excel.workbooks.{name}: {e}")
+            continue
+        cc = ad.cross_check()
+        if cc:
+            warnings.append(f"excel.workbooks.{name}: the workbook has {len(cc)} cross-check problem(s) (e.g. {cc[0]})")
+    return problems
 
 
 # --- the environment: the tools this computer needs for the workspace (methodology 12.3; plan 9.5) ------------

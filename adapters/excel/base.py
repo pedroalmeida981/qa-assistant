@@ -37,6 +37,7 @@ before anything is written (validate_batch, technique-excel.md section 4).
 from __future__ import annotations
 
 import copy
+import fnmatch
 import hashlib
 import json
 import os
@@ -62,6 +63,53 @@ CASE_MODEL_FIELDS = ("title", "area", "feature", "preconditions", "steps", "expe
 
 class ConfigError(ValueError):
     pass
+
+
+DEFAULT_WORKBOOK = "default"
+
+
+def other_workbooks(excel: dict) -> dict[str, dict]:
+    """excel.workbooks (technique-excel.md section 1.1): {name: {file, batches?, <excel keys>?}}, checked."""
+    others = excel.get("workbooks") or {}
+    if not isinstance(others, dict):
+        raise ConfigError("excel.workbooks: expected a mapping {name: {file, batches}}")
+    for name, w in others.items():
+        if name == DEFAULT_WORKBOOK:
+            raise ConfigError(f"excel.workbooks: {DEFAULT_WORKBOOK!r} is reserved for excel.file")
+        if not isinstance(w, dict) or not isinstance(w.get("file"), str) or not w["file"]:
+            raise ConfigError(f"excel.workbooks.{name}: expected {{file: <path>, batches: [<pattern>, ...]}}")
+        batches = w.get("batches") or []
+        if not isinstance(batches, list) or not all(isinstance(b, str) and b for b in batches):
+            raise ConfigError(f"excel.workbooks.{name}.batches: expected a list of file name patterns")
+        if "workbooks" in w:
+            raise ConfigError(f"excel.workbooks.{name}: a workbook cannot name other workbooks")
+    return others
+
+
+def workbook_for(excel: dict, batch_path: str, doc: dict | None = None, requested: str | None = None) -> str:
+    """The workbook a run log goes to (technique-excel.md section 1.1): run.workbook, the --workbook option and the
+    batches patterns its file name matches must agree; none of them means the default. Raises InvalidBatch."""
+    others = other_workbooks(excel)
+    known = [DEFAULT_WORKBOOK, *others]
+    name = os.path.basename(batch_path)
+    matched = sorted(k for k, w in others.items() if any(fnmatch.fnmatchcase(name, p) for p in w.get("batches") or []))
+    if len(matched) > 1:
+        raise InvalidBatch([f"{name} matches the batches of more than one workbook: {', '.join(matched)}"])
+    run = (doc or {}).get("run")
+    named = run.get("workbook") if isinstance(run, dict) else None
+    sources = {}
+    for source, value in (("run.workbook", named), ("--workbook", requested)):
+        if value is None:
+            continue
+        if value not in known:
+            raise InvalidBatch([f"{source} {value!r} is not a workbook of the project (known: {', '.join(known)})"])
+        sources[source] = value
+    if matched:
+        sources[f"the batches of {matched[0]}"] = matched[0]
+    if len(set(sources.values())) > 1:
+        said = "; ".join(f"{s} says {v}" for s, v in sources.items())
+        raise InvalidBatch([f"{name}: the workbook is ambiguous ({said})"])
+    return next(iter(sources.values()), DEFAULT_WORKBOOK)
 
 
 class InvalidBatch(ValueError):
@@ -168,16 +216,40 @@ class ExcelAdapter:
         return cls(data, base_dir=os.path.dirname(os.path.abspath(path)))
 
     @classmethod
-    def from_project(cls, workspace: str = ".") -> ExcelAdapter:
+    def from_project(cls, workspace: str = ".", workbook: str | None = None) -> ExcelAdapter:
         """Reads the `excel:` section of the workspace's project.yaml (plan
-        task 1.3). The workbook path is relative to the workspace."""
+        task 1.3). The workbook path is relative to the workspace. `workbook`
+        names one of excel.workbooks (technique-excel.md section 1.1): its keys
+        replace the default's; None or "default" is excel.file."""
+        excel = cls.project_excel(workspace)
+        cfg = {k: v for k, v in excel.items() if k != "workbooks"}
+        if workbook not in (None, DEFAULT_WORKBOOK):
+            others = other_workbooks(excel)
+            if workbook not in others:
+                raise ConfigError(f"excel.workbooks has no workbook {workbook!r} (known: {', '.join(others) or 'none'})")
+            cfg.update({k: v for k, v in others[workbook].items() if k != "batches"})
+        else:
+            other_workbooks(excel)
+        return cls(cfg, base_dir=os.path.dirname(os.path.abspath(os.path.join(workspace, "project.yaml"))))
+
+    @staticmethod
+    def project_excel(workspace: str = ".") -> dict:
+        """The raw `excel:` section of the workspace's project.yaml."""
+        import yaml
+
         path = os.path.join(workspace, "project.yaml")
         if not os.path.exists(path):
             old = os.path.join(workspace, "projeto.yaml")
             hint = (" (a workspace from before the translation: convert it with scripts/migrate_workspace.py)"
                     if os.path.exists(old) else "")
             raise ConfigError(f"{path} does not exist{hint}")
-        return cls.from_yaml(path, section="excel")
+        with open(path, encoding="utf-8-sig") as f:
+            data = yaml.safe_load(f) or {}
+        if "excel" not in data:
+            raise ConfigError(f"{path}: section 'excel' is missing")
+        if not isinstance(data["excel"], dict):
+            raise ConfigError(f"{path}: section 'excel' must be a mapping")
+        return data["excel"]
 
     @staticmethod
     def _validate(cfg: dict) -> dict:

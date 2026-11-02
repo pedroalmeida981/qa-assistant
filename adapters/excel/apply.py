@@ -4,9 +4,11 @@ Applies a batch (run log) to a workspace's workbook, in one step
 
     load -> apply_batch -> regenerate_active_defects -> save_if_clean -> recalc
 
-The configuration comes from the `excel:` section of the workspace's project.yaml.
+The configuration comes from the `excel:` section of the workspace's project.yaml. With more than
+one workbook (excel.workbooks), the batch goes to the one its run.workbook, --workbook and file
+name agree on (technique-excel.md section 1.1); a disagreement is an invalid batch (exit 4).
 
-    python -m adapters.excel.apply <workspace> <batch.json>
+    python -m adapters.excel.apply <workspace> <batch.json> [--workbook <name>]
         [--label "[2026-09-23, batch 01]"] [--reported-by "..."] [--no-recalc]
         [--now 2026-09-23T14:03:00]   (fixed dates written; technique-excel.md section 1)
 
@@ -26,7 +28,14 @@ import os
 import sys
 from datetime import datetime
 
-from .base import ConfigError, ExcelAdapter, InvalidBatch, read_batch
+from .base import (
+    DEFAULT_WORKBOOK,
+    ConfigError,
+    ExcelAdapter,
+    InvalidBatch,
+    read_batch,
+    workbook_for,
+)
 
 
 def _resolve(workspace: str, path: str, what: str = "batch") -> str:
@@ -40,18 +49,19 @@ def _resolve(workspace: str, path: str, what: str = "batch") -> str:
 
 def apply(workspace: str, batch_path: str, label: str | None = None,
           reported_by: str | None = None, recalc: bool = True,
-          now: datetime | None = None) -> int:
+          now: datetime | None = None, workbook: str | None = None) -> int:
     batch_path = _resolve(workspace, batch_path)
-    ad = ExcelAdapter.from_project(workspace)
+    doc = read_batch(batch_path)
+    target = workbook_for(ExcelAdapter.project_excel(workspace), batch_path, doc, workbook)
+    ad = ExcelAdapter.from_project(workspace, target)
     ad.now = now
     ad.load()
     before = ad.progress_summary()
-    doc = read_batch(batch_path)
     batch = doc["results"]
     batch_id = os.path.splitext(os.path.basename(batch_path))[0]
     label = label or f"[{ad._now().date().isoformat()}, {batch_id}]"
 
-    print(f"Workbook: {ad.path}")
+    print(f"Workbook: {ad.path}" + (f" ({target})" if target != DEFAULT_WORKBOOK else ""))
     print(f"Batch: {batch_path} ({len(batch)} items)")
     r = ad.apply_batch(batch, label=label, reported_by=reported_by, batch_id=batch_id,
                        identity=doc.get("translated_from"))
@@ -108,9 +118,11 @@ def main(argv=None) -> int:
     ap.add_argument("--no-recalc", action="store_true")
     ap.add_argument("--now", type=datetime.fromisoformat, metavar="YYYY-MM-DDTHH:MM:SS",
                     help="instant used in every date written, instead of the clock (rebuilds)")
+    ap.add_argument("--workbook", help="one of excel.workbooks, or 'default' (technique-excel.md 1.1); it must agree "
+                                       "with the run log's run.workbook and its file name")
     a = ap.parse_args(argv)
     try:
-        return apply(a.workspace, a.batch, a.label, a.reported_by, not a.no_recalc, a.now)
+        return apply(a.workspace, a.batch, a.label, a.reported_by, not a.no_recalc, a.now, a.workbook)
     except (InvalidBatch, ConfigError, FileNotFoundError) as e:
         print(f"\nNOTHING APPLIED -- {e}", file=sys.stderr)
         return 4
