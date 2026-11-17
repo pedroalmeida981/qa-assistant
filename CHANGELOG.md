@@ -1,0 +1,668 @@
+# Changelog
+
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions of the `qa-audit` engine
+(`pyproject.toml`). The workspace layer is tracked in [`docs/development-plan.md`](docs/development-plan.md).
+
+## Unreleased
+
+### Changed (methodology migration notes, 2026-11-17)
+- The version notes of `docs/methodology.md` (v1 → v2 up to v2.14 → v2.15) moved word for word to
+  `docs/history/methodology-migration-notes.md`; the methodology keeps a one-line pointer, so the notes are no longer
+  loaded with the current rules. No rule changed.
+
+### Changed (README and layout, 2026-11-17)
+- `README.md` is now a short start page: what it is, a quick start, one fictional example from a ticket to an approved
+  write (every command checked on `examples/demo`), the eight skills, what you approve and what is verified. The CI details
+  moved word for word to `docs/ci.md`; the tracker state stays in `docs/tracker-validation.md` and the workspace apply
+  workflow in `docs/workspace/ci/README.md`.
+- The Playwright helper moved from `integrations/playwright/qa-audit.ts` to `tools/playwright/qa-audit.ts` (one folder for
+  the non-Python tools, next to `tools/android-driver/`); the demo spec, the pre-commit test trigger and the docs follow. A
+  workspace that copied the helper keeps its copy.
+- The dated reports `docs/audit-2026-11-06.md` and `docs/pilot-improvements-2026-11-07.md` moved to `docs/history/`; the
+  scripts and tests that cite them follow. Earlier entries of this changelog keep the old paths as history.
+- `docs/tracker-validation.md`: the guarded Azure DevOps bug creation has been used on one real project since 13.11.2026
+  (enabled there by the owner; still disabled by default; atomicity with the parent still not proven).
+
+## [Unreleased]
+
+### Added (`tracker: linear`, read only, 2026-11-16)
+- `tracker: linear` is accepted by `scripts/validate_project.py` when `tickets.sources` has a Linear source
+  (`service: linear`); without one it is a problem that names the section. It adds no write path: there is no Linear
+  adapter, so the run logs stay the source and results, cases and bugs are passed to Linear by hand, each after the
+  user's approval (methodology 4.2); a warning says so. `excel`, `jira` and `azure-devops` are unchanged.
+
+### Added (the QA's plan decision and its check, increment 2B, 2026-11-15)
+- Opt-in `policy.approvals.plan: required | with-request` (needs `workspace:`), independent of `run`; with both, both
+  must pass. `scripts/approvals.py` `review-plan` (the readable review of a draft `analysis/<name>.yaml`: the whole
+  operational coverage, its hash and the difference from the coverage approved before), `approve-plan` (after the QA's
+  explicit message: the draft must still have the hash presented and the review must be this version's; its bytes
+  become `batches/<batch>.yaml` and a `gate: plan` decision is appended, idempotent after an interruption) and
+  `check-plan` (valid, missing, legacy, stale with the difference, revoked). The canonical hash `plan-canonical-v1`
+  covers the cases' order, excluded, retest, assumptions, notes, platform, environment and PBI, and leaves out
+  formatting, comments, the old `approval:` block and run.build; a build the coverage depends on is an assumption
+  checked against the observed build, and the quarantine decisions are checked in the effective context even when the
+  hash is the same. The decision approves coverage only (`authorises_run: false`), declared in the chat with the
+  message reference not verified, with the approved coverage, the presented draft and review and the tickets'
+  revisions. Enforced by `run_log.py plan` / `add`, the CI's «Resolve the batch» (before the remote run log and the
+  flows) and `build-check`, and `pbi_state.py mark plan done` (every platform in scope approved or formally skipped
+  with a note); `pbi_state.py show` lists it. Decided under the workspace's lock from one reading of the draft; a plan
+  already followed by results is never replaced (a new batch). Run decisions keep the 2A format. Skills plan-tests,
+  test-pbi and run-tests stop before the first action without a valid plan decision. docs/procedures/approvals.md §5.
+
+### Added (the QA's run decisions and their check, increment 2 first part, 2026-11-15)
+- `scripts/approvals.py`: `memory/approvals.jsonl`, append-only under the workspace's lock: `record-run`, `check`,
+  `list`, `revoke`. A run decision holds the workspace identity, PBI, batch, platform, environment, build, the plan and
+  its SHA-256, `declared_by`, the reference to the QA's message and the date; it is marked `declared-in-chat` with the
+  reference not verified (never a signature, never written from a successful command). `check` reads only and answers
+  valid, missing, stale (naming the field) or revoked; an unreadable register is an error.
+- Opt-in `policy.approvals.run: per-platform` (needs `workspace:`; validated by `validate_project.py`): `run_log.py add`
+  refuses every result without a valid decision for the batch's platform, environment, build and recorded plan, writing
+  nothing; the CI's «Resolve the batch» checks the same before the run log, the emulator and the flows (an ad hoc list
+  is refused); `workspace_ci.py build-check` (new workflow step after the APK is fetched, before the emulator) compares
+  the APK's own version with the validated build and checks the decision for it; `pbi_state.py show` lists each
+  platform's decision. Only the observed build counts (the plan's is the intended one); a remote run log carries only
+  its base batch's decision (`<batch>_r<digits>`); `record-run` takes only the batch's own plan and refuses a PBI,
+  platform or environment the plan declares otherwise; the same decision twice is one line. `/run-tests` step 3 checks before the first action
+  and on every resume. Without the option nothing changes. docs/procedures/approvals.md.
+
+### Added (identity of a workspace and the session's workspace, 2026-11-15)
+- `project.yaml` takes an optional `workspace: {id, kind}` (kind `real` or `simulation`; `scripts/workspace_identity.py`,
+  validated by `validate_project.py`). The project's name stays informative; the list shows the identity and marks two
+  folders with the same id. A name given to a skill matches the identity's id first. New simulations go under
+  `~/qa-simulations/` (technique-workspaces.md 4.1); existing copies are not moved.
+- Preflight exit 5: a session open inside one workspace (its folder or any subfolder) stops when the target is
+  another workspace, compared by real paths, whatever the names and whether the target came by name or by path; it
+  prints both workspaces and the command to open the right session. An explicit path is checked before the skill's
+  own checks. A session outside every workspace (CLI, CI with an explicit target, the framework's checkout) is not
+  stopped. The search for the session's workspace goes up any number of folders.
+- `pbi_state.py`: exit 6 for the same session rule, before reading or writing. A record created in a workspace with
+  an identity keeps it (`"workspace"`); a later command in a workspace with another identity, or none, refuses it and
+  leaves it untouched. Records without identity are read and changed as before and never bound by guessing;
+  `pbi_state.py <ws> bind <pbi> --as <id> --decided-by <QA>` binds one on the QA's decision. Skills: exit 5 in step 0 of
+  every skill; `/test-pbi` step 2 stops on exit 6. `policy.approvals` is left for the next increment.
+- An identity id declared by two folders is never chosen: selecting it is ambiguous and names both paths. Documented
+  limit: a full copy that kept the real identity can resume its own copied records from inside itself (never the
+  original's); the procedure for a simulation gives it its own identity before any PBI is resumed.
+
+### Changed (an approved batch plan is recorded before the run, 2026-11-14)
+- `run_log.py add` refuses (exit 1, nothing written) the first result of a batch whose own plan
+  `batches/<name>.yaml` (with or without the `batch_` prefix) carries the QA's decision (`approval:`, `excluded:`,
+  `retest:`) until `run_log.py plan` records it; `plan` refuses another file for that batch; `progress` names the
+  command and, before the first result, checks the quarantine in the plan's `run:` context (no false «revalidate»).
+  `workspace_ci.py batch` records the plan of a planned remote batch. Batches without such a plan (ad hoc retests,
+  older batches) are recorded as before. `/run-tests` step 3: mode, plan, progress, then the first case.
+- Two own plans with the QA's decisions (`batches/<name>.yaml` and `batches/batch_<name>.yaml`) are ambiguous: `add`,
+  `plan` and the CI refuse and name both until the QA keeps one; a run log that follows another plan than its own plan
+  with decisions is refused too (recording the own plan keeps the results). `progress` says `PLAN TO RESOLVE`.
+- CI: the step «Resolve the batch» checks a planned batch as `quarantine.py scope --plan` with the run's platform
+  (android), build and environment, before the run log and the step's outputs: a missing or out-of-date decision
+  stops the workflow before the emulator, the flows and the agent. A list of case IDs runs as before.
+
+### Added (bugs: final preview of the fields, write guard 1.2.0, 2026-11-13)
+- `ado_guard_preview_bug` shows every field with the label of the Board's form and its exact value, the Parent,
+  Assigned To empty, the project's checks and notices, the evidence and the creation comment as separate operations,
+  with `payload_sha256` and `patch_sha256`; `ado_guard_create_bug` creates only what was previewed (with
+  `write_guard.require_patch_hash`, the patch hash too). Optional mapping `write_guard.bugs` in project.yaml
+  (labels, extra fields by confirmed reference name, checks, notices), validated by `validate_project.py` and at the
+  guard's start. `procedures/bugs.md`: mapping a bug to the tracker's real fields; `/manage-bugs` shows the preview.
+
+### Changed (bugs: unassigned on creation, ledger, reviewed video; write guard 1.1.0, 2026-11-13)
+- Earlier than the preview: a bug is created without Assigned To and the read-back reports the real assignee; a
+  ledger of the bugs the guard created lets their attachments and creation comment follow without an assignee; a
+  video is attached only with its `<file>.review.json` (reviewed, no personal data or masked; up to 60 MB).
+
+### Added (checkpoint and resume of /test-pbi: open items, intermediate checkpoints, closing, 2026-11-13)
+- `pbi_state.py open|update|close` record what waits on someone (approval, publish, apply, dependency, question)
+  with a stable id and who unblocks it; `saved` records an intermediate checkpoint without changing a step;
+  `mark checkpoint done` is refused (exit 4) while a step is pending or blocked or an item is open, unless the QA
+  decides `--close-with-open --decided-by`. `start`, `show` and `mark` print one state block (`Next:`, waiting on the
+  QA or the team, blocked, published; "nothing pending" only when it is true). `rules.md` §7, `skills-spec.md` §5.1,
+  `/test-pbi` and `/checkpoint`.
+
+### Added (bugs in quarantine, proposal; 2026-11-13)
+- `docs/procedures/quarantine.md`, `rules.md` §18 and `scripts/quarantine.py` (`show`, `propose`, `decide`, `scope`,
+  `report`): a quarantine is the QA's decision, recorded in `memory/quarantine.json` of the workspace (a bug as the run
+  logs link it and, when different, its tracker id; the cases; the platforms, builds and environments; the reason; the
+  exit condition). The assistant proposes; `decide` needs who decided and where. Plans say the QA's choice per covered
+  case (`excluded:` or `retest:`); `report` shows apart the cases left out («<pending status> — <label>», label from
+  `quarantine.excluded_label`), the known failures observed and the retests run.
+- Enforced at the entry point: `run_log.py add` refuses a result for a case left out while its quarantine holds, for a
+  covered case without the QA's decision in the plan, and for an `excluded:` whose quarantine no longer holds (the plan
+  is out of date); `run_log.py progress` names a plan to revalidate. Skills: `/plan-tests`, `/test-pbi`, `/run-tests`
+  (the check before the first case and on resuming), `/manage-bugs`, `/qa-report`, `/checkpoint`.
+- `run_log.py add` and `plan`: in an Excel project with a workbook per platform, a case of the batch's own workbook is
+  in its library (an iOS-only case was refused); the default workbook's cases stay accepted as before.
+
+### Changed (Excel: a preview reads, a write needs its approved token and an unambiguous destination, 2026-11-13)
+- Incident of 13.11.2026 (a workspace's run): an add «simulated on a copy» named the copy only in `$QA_WORKBOOK`, was
+  run with `--platform` (which chose the destination from project.yaml and ignored the variable without a word) and
+  without `--expect`, and wrote into the real workbook of the platform. `technique-excel.md` §1.2 now separates the two:
+- `adapters.excel.apply`, `add_cases` and `reconcile`: from the command line a write needs `--expect <token>` of the
+  approved dry run (exit 4, nothing written, otherwise). The Python API (`apply()`, `add()`) is unchanged for
+  programmatic callers (the golden check, the demo rebuild, which now uses it).
+- An explicit destination (`--workbook <path>`, new in the three commands, or `$QA_WORKBOOK`) is validated and never
+  ignored: outside the workspace, missing, not a workbook, two different values, or a contradiction with `--platform`
+  or the batch's route is refused (`adapters.excel.base.explicit_workbook`). `reconcile` follows the batch's route
+  like the apply (it used `excel.file` or the variable).
+- The apply's token keeps its `v2-` prefix and also hashes the destination (path and content): a token never
+  authorises another workbook, even with the same content. Previews made before this are refused as «out of date» and
+  are regenerated with the same `--dry-run`. The add's and the reconcile's tokens already named the destination.
+- The dry runs show the absolute path resolved on a line never cut, with the token.
+
+### Added (Linear as a ticket source, read only, 2026-11-12)
+- `tickets.sources.<id>.service: linear` (`adapters/tickets/linear.py`): `/analyze-ticket` reads a Linear issue by key,
+  `<source>:<key>` or link through the official GraphQL API, with a personal API key (`api_key_var`) and only the
+  named queries of `linear.ALLOWED` (no mutation; the read-only transport still guards every request). Fields,
+  comments (paged), relations, children, attachments and the history Linear keeps; acceptance criteria from the
+  description's sections under `acceptance_criteria.headings`, word for word with their lines (`origin`). Same
+  memory, comparison and resume as Azure DevOps and Jira; the browser or MCP route takes the same shapes.
+- `sources` says "configuration only: access not confirmed" without `--online` (and `validate_project.py
+  --environment` too); `sources --online` with Linear checks the key's workspace and teams.
+- A key that a Jira and a Linear source may both hold is ambiguous (exit 2): `<source>:<key>` decides.
+- `fields.unavailable` / `fields.partial` / `fields.origin` in a snapshot: a field a source cannot give or gave in
+  part is never compared as a value; a check whose fields came back in part is partial (exit 1), not failed.
+- `pbi_state.py` recognises Linear links (and a Jira `site` link, which it refused before); `ac_coverage.py init`
+  finds a key's ticket memory on a case-sensitive disk and records the ticket, link and section of the criteria.
+
+### Changed (acceptance criteria transcribed word for word, 2026-11-12)
+- `ac_coverage.py init`: each criterion's `text` keeps the original lines, breaks, indentation, lists, tables and
+  fenced blocks (before, its lines were stripped and joined with spaces); a table or a fenced block is never split;
+  `criteria_source.text` keeps the whole field; each criterion has `origin` (ticket, link, section, lines),
+  `presentation` (`inline` or `reference`) and `reference`. `report` shows a criterion by reference with its full
+  transcription below, every line as written (rules.md section 17). Maps written before keep their text as it is.
+- Not in this change: `tracker: linear` (cases, results, bugs), publishing bugs to Linear, a real pilot.
+
+### Added (comparison of `spec_refs` on a resume, 2026-11-11)
+- `scripts/spec_refs.py` (`cite`, `compare`) and `pbi_state.py baseline --spec-plan FILE` / `check [--spec-root DIR]`:
+  on a resume, `/test-pbi` compares the rules each scenario of the plan cites with the specification now available
+  (an `export` source), by the full text of each rule. The same text in a new revision of the file keeps the scenario
+  reusable; a changed, removed or moved rule names the scenarios to review before the plan is reused (short rules
+  shown word for word, long ones by reference); what could not be verified leaves its scenarios pending review and
+  the check "not concluded". A project without `specs:` and a plan without `spec_refs` keep the current flow.
+  Tests: `tests/test_spec_refs.py`.
+
+### Added (functional specification source, 2026-11-11)
+- An optional `specs:` section in project.yaml (template in `docs/project.yaml`, commented out) and
+  `docs/technique-specs.md`: a workspace can name its functional specification (`artifact`, `git` or `export`). A
+  private location stays in the workspace's `.env`, named by `specs.location_var`; only the variable's name is ever
+  shown. `/analyze-ticket` (`procedures/tickets.md` step 6), `/plan-tests` (`planning.md` step A.2, skill step 3) and
+  `/test-pbi` (step 3: a changed revision lists the rules and the cases that cite them before the plan is reused)
+  read it, cite each rule with its revision (`spec_refs`) and keep a divergence with the tracker a question.
+  `rules.md` §17 is unchanged and applies to the specification's text too.
+- `validate_project.py` checks the section only when it is there (kind, exactly one of location/location_var, the
+  divergence prefixes, the rule id pattern) and adds a `spec source` environment line; the preflight of the three
+  skills shows that line (`requires-tools: "spec"`) without asking any other tool. A project without `specs:`
+  validates and preflights exactly as before. `scripts/spec_source.py` is left for a later phase.
+
+### Changed (Windows status wording, 2026-11-11)
+- The summary banner of the Windows suite, the header of `windows-suite.yml`, comments and the `ci-status` note in `ci.yml`, the header of
+  `.github/known-failures-windows.txt` and the README no longer say that the Windows suite is red or has known failures: since the six
+  path-separator tests were fixed and the POSIX-only guard tests were skipped on Windows, the list is empty and the suite passes. They say
+  what a pass means: 43 skips (the guard, LibreOffice-dependent tests, POSIX features), which prove nothing on Windows, so Windows stays
+  unconfirmed and the workflow stays outside `ci-status`. The check is now named `windows-suite (UNCONFIRMED)`.
+
+### Changed (QA apply template, 2026-11-11)
+- `docs/workspace/ci/apply.yml`: the workspace's `QA apply` no longer runs on a push to `main`. It started on every push that touched `runs/**`,
+  applied without a dry run and without a preview token, committed and pushed to `main` and commented on pull requests ("the merge is
+  the approval"). Now the only trigger is `workflow_dispatch`; the default mode is a dry run (it refuses a `proposed` bug or a `Question`,
+  writes nothing, prints the review and, for Excel, the `v2-` token); `mode: apply` needs the typed approval `APPLY <batch>` and the
+  reviewed token (a wrong or stale one is refused by `--expect`, nothing written) and pushes only a new branch `qa-apply/<batch>-<run>`
+  with the project's workbook(s) or `tracker/` (any other changed file stops it). No pull request is opened, `main` is never pushed to,
+  permissions are read-only except the apply job's branch push, Actions are pinned to a commit, and the framework is the public
+  repository by default (`QA_ASSISTANT_REPOSITORY`, `QA_ASSISTANT_REF`, optional `QA_ASSISTANT_TOKEN`). Jira / Azure DevOps keep `--yes`
+  behind the typed approval (no token exists there). `workspace_ci.py apply-merged` is no longer called by the template.
+- New `tests/test_apply_template.py` (structure; and the template's own shell blocks end to end on the fictional demo with a local fake
+  remote, run in the `golden` job). `docs/workspace/ci/README.md`, `pr-body.md` and `technique-mobile.md` §11.4 describe it. A workspace that
+  installed the old copy keeps it until it runs `workspace_ci.py <workspace> install` again.
+
+### Changed (CI audit, 2026-11-11)
+- `ci.yml`: `main` and manual runs are no longer cancelled by a newer push (each commit keeps its result); a pull request
+  keeps one run. New `workflow_dispatch`. Job `changes`: the three browser jobs run on a pull request only when it touches
+  `src/`, `tests/integration/`, `tests/fixtures/`, `scripts/ci_test_summary.py`, `pyproject.toml`, `requirements.txt` or `.github/` (14 of the 17 pull
+  requests of the previous repository touched none of them; the browsers were about 21 of 25 runner minutes per run).
+  `qa-audit` reports "skipped by design"; new `ci-status`, the single check to require when protecting `main`.
+- New `scripts/ci_test_summary.py` (tests in `tests/test_ci_test_summary.py`): counts and skips by reason in the summary;
+  fails when no test ran or a skip has no allowed reason (`golden`: none allowed).
+- New jobs `tests-macos` (the whole suite) and `windows-only-tests` (the two Windows-only tests, which were skipped everywhere
+  else; the name says what it covers). New workflow `windows-suite.yml`: the whole suite on Windows, **red while it has failing
+  tests** (17 known ones, `.github/known-failures-windows.txt`, listed apart from any new failure; not part of `ci-status`).
+  Windows is unconfirmed until that file is empty. `tests/test_ci_filter.py` keeps the path filter of the `changes` job honest.
+- Actions pinned to a full commit SHA, `persist-credentials: false`, `timeout-minutes` on every job, logs of a failed run
+  kept 7 days, a wait loop instead of `sleep 2` in `install`, `pre-commit` pinned; `.github/dependabot.yml` for the actions.
+- `demo-e2e` and `demo-secrets` leave `ci.yml`: `demo-e2e.yml` (manual, weekly when `DEMO_E2E_SCHEDULE` is `true`) fails
+  with a clear message, instead of being skipped, when its secrets are missing.
+- Test fix: `test_the_cadence_does_not_depend_on_the_readings` used a 0.2 s interval with a 0.3 s limit and failed on a shared
+  macOS runner (0.32 s); the interval is 0.5 s now (the product was fine).
+
+### Fixed (review of PR #15, 2026-11-10)
+- Criteria coverage in the audit: with several workbooks and no platform from the map or the audited batches, the audit says
+  «coverage not assessed: platform undetermined» (the default workbook is not guessed); one workbook is unchanged.
+- Proof: a comparison side counts only as `before <subject>: <text>` / `after <subject>: <text>` with the exact subject and a
+  non-empty text (subjects sharing a prefix are not confused); an `--observed-absence` counts as a direct observation but
+  never satisfies a comparison; results without `proof` are still never judged.
+- Criteria coverage: the platforms of a map are intersected with the audited ones (a map outside them is «out of scope»);
+  `ac_coverage.py report` with several workbooks gives one report per platform or needs a valid `--platform`; a single
+  workbook still runs without it.
+
+### Added (closing Q1, Q2 and Q3, 2026-11-10)
+- `run_log.py add` and `mode` use the apply's workbook rule (`route_workbook`): with several workbooks, an ambiguous or
+  contradictory destination is refused before anything is written; single-workbook projects and old run logs are unchanged.
+  Tests: `tests/test_run_log_destination.py`.
+- Proof: `run_log.py add --requires-comparison SUBJECT` (needs `before SUBJECT:` and `after SUBJECT:` observations) and
+  `--observed-absence TEXT`; the audit flags a Pass that lacks a comparison side and lists an absence seen directly apart.
+- `qa_report.py audit` shows the criteria coverage of `analysis/ac_map_*.json` per platform (that platform's workbook and run
+  logs, `ac_coverage.py report --platform`), the same case with different results between platforms, and says «no map» apart from
+  «uncovered criterion». It never changes the batches' `to_fix`. Tests: `tests/test_ac_audit.py`.
+
+### Added (batch 2, phase D and guard hardening, 2026-11-10)
+- `adapters/excel/add_cases.py --platform android|ios|both|<platform>`: the destination workbook comes from project.yaml (no
+  `QA_WORKBOOK`, no copy); `both` validates every workbook before writing and has one combined token; a case that says another
+  platform is refused for that destination; an ID proposed with different content by another `cases/*.json` that is not yet in the
+  target workbook is refused. Tests: `tests/test_add_cases_platform.py`.
+- `run_log.py add --proposed`: records the result of a case that is only proposed in `cases/*.json` (marked `case_pending_add`);
+  the apply refuses it, naming `add_cases`, until the case is in the workbook. Tests: `tests/test_run_log_proposed.py`.
+- `adapters/excel/add_columns.py` + case-model fields `pbi_id` and `qa_task`: traceability columns (PBI ID, QA task, origin,
+  platform) added to the case sheets with a dry run, a token, a review file and a control-sheet record; only headers are added.
+  Tests: `tests/test_add_columns.py` (checked on a scratch copy of a real workbook: cross-check 0 problems).
+- `scripts/ado_write_guard.py`: refuses a credential with whitespace or control characters inside (writes disabled; the status shows
+  `rejected: ...`, never the value); the status reports `credential_expiry` (days left, warning at <= 3 days) from optional ISO-date
+  env vars; read-only tools `ado_guard_preview_comment` (same code path as add_comment: duplicate, SHA-256, would_write, reasons)
+  and `ado_guard_render_markdown` (deterministic, escaped Markdown to HTML with its hash; never applied automatically); optional
+  publication reports (`--report-dir` / `ADO_GUARD_REPORT_DIR`): one JSON per successful comment or attachment with hashes,
+  read-back result and revisions, never text or content. 47 new tests; bug creation stays disabled by default.
+- `scripts/ado_write_guard.py` FIX found against the real service: with `$expand=relations` the API returns the work item id at the
+  top level and not in `fields`; the parent check now compares the top-level id (and `System.Id` only when present), and the fake
+  transport of the tests returns the real shape. Before this, the bug-creation preview was blocked for every parent.
+- `scripts/device.py`: `check` prints `device state:` (no-device / unauthorized / offline / other / several, one `next:` action
+  each; exit codes unchanged), `screen:` (awake / locked / asleep / unknown) and `notifications:`; tap/hold --xy, swipe and the tap
+  of send refuse (REFUSED, exit 3) when the notification shade, a heads-up, a permission dialog or the developer settings is in
+  front; `find_personal_data` (e-mail / phone-like counts, never values) makes shot, dump --capture and send --capture warn and
+  `--require-clean` refuse to save; `--caption` writes `evidence_manifest.jsonl`. The heuristic ignores the project's synthetic test identifiers (`QA-AUTO-<date>-<n>`), which
+  it used to report as a phone number on a real screen, and still finds real numbers next to letters, identifiers and punctuation (regression
+  tests with the observed identifiers, numbers with and without country code, several separators and mixed cases). Tests: `tests/test_device_diagnostics.py`
+  (66, injected adb output only; nothing was proven on a real device).
+- `scripts/ado_write_guard.py --probe-on-start` (opt-in, or `ADO_GUARD_PROBE_ON_START=1`): one read with the write credential at startup, reported
+  in the status as `startup_probe`; never fatal. `run_log.py progress` (already present) is the per-batch resume. `device.py check` was run read-only on a real
+  Android phone: device state, screen, foreground app, notification permission and build read correctly.
+- `docs/procedures/rules.md` §16 and `planning.md` step 1d: corrections of applied results (L5), new cases (Q4), traceability
+  columns (L1), builds (phase B) and bugs (phase C) in one place.
+
+### Changed (public-repository hygiene, 2026-11-10)
+- `scripts/ado_write_guard.py`: the Azure DevOps organisation is configuration (`--org` or `ADO_GUARD_ORG`), never a constant of
+  the code or of the tests; with neither the server does not start (exit 2, nothing read or written); the name must be a plain
+  organisation name (never a URL or a path). The tests use a fictional organisation. Tests: `OrganisationConfig` in
+  `tests/test_ado_write_guard.py`.
+
+### Added (phase B, Slack build search, read only, 2026-11-10)
+- `scripts/slack_build_messages.py`: offline parser of the text a Slack connector returns (detailed format) into the message list
+  of `build_candidates.py`; keeps the exact `Message TS` (blocks without it are skipped, never approximated), drops names, e-mails
+  and user ids; builds permalinks only when the workspace domain is given. No network, no credentials.
+- `scripts/build_candidates.py`: release-pipeline notifications («Deployment on stage … succeeded», `Release-N`) are listed
+  apart (`--deployments`) and are never build candidates: the pipeline release id is not an app build number.
+- `docs/procedures/builds.md`: procedure, scope, permissions (local deny of the write tools), the four things never confused
+  (announced release, pipeline deployment, app distribution, installed build) and the limitations.
+  Tests: `tests/test_slack_build_messages.py`.
+
+### Added (first batch of improvements after the six-PBI cycle, 2026-11-10)
+- `python -m adapters.excel.annotate <workspace> <annotations.json> [--dry-run] [--expect TOKEN]` (technique-excel.md §4.2): adds a
+  dated note to the Notes column of cases that already have a result, without touching their status or observed result (checked
+  before saving); dry run with a token, review next to the file (never in runs/), control-sheet record, same annotations or a
+  note already in the case refused. Tests: `tests/test_excel_annotate.py`.
+- `scripts/guard_destructive.py` (docs/technique-destructive-guard.md): Claude Code PreToolUse hook that blocks recursive deletion
+  outside the session's scratchpad (rm -r, rmtree, find -delete, git clean; in commands, python files the command runs and
+  files being written). NOT installed by default. Tests: `tests/test_guard_destructive.py`.
+- `procedures/rules.md` §12 (deleting), §13 (test accounts: state and reason only) and §14 (communication: the final report of a
+  phase; interrupt only for a block, a login/consent/permission, an approval or a decision); planning and mobile procedures
+  check the account first.
+- `scripts/build_candidates.py`: parses fictional (or pasted) build announcements into candidates that keep the announced release,
+  the distributed build and the build observed on the device apart; no Slack access. Tests: `tests/test_build_candidates.py`.
+
+### Added (batch 2, phase C: controlled creation of bugs in the guard, 2026-11-10; DISABLED by default)
+- `scripts/ado_write_guard.py`: `ado_guard_preview_bug` (read only: all the checks, the exact JSON Patch and the payload hash) and
+  `ado_guard_create_bug` (one bug; off unless the launcher sets `ADO_GUARD_ALLOW_BUG_CREATE=1`). The parent must be a PBI or a QA task of
+  the project assigned to the verified identity (stable id); the bug is born assigned to that identity (unique name read from the parent) with
+  the parent's area and iteration; closed schema; payload hash; Bug type check; duplicate search (same parent and project, WIQL as a
+  read); parent revision re-read; ONE request with the Parent link; the result is read back. Atomicity of fields + link is NOT proven
+  (`ATOMICITY_PROVEN = False`): a bug without the link or different from the approved is reported with its id, never repaired, repeated
+  or deleted; after a lost or 5xx answer it looks for the bug and never resends. `Http.request(read=True)` lets a POST that only reads
+  use the read credential. Tests: `tests/test_ado_guard_bugs.py` (32, fictional). Docs: `docs/technique-ado-write-guard.md`.
+
+### Added (batch 2, phase A: integrity of results and approvals, 2026-11-10)
+- **Partial batches (Q1):** `run_log.py subset` copies chosen results unchanged into a new batch (`derived_from`: original, SHA-256,
+  cases, reason); each result has an identity (`result_key`) kept in the control sheet (`result_keys`, rebuilt from the run log for
+  older rows) and the apply refuses a result already applied from another batch; the audit lists the derivation and an overlap.
+- **Proof (Q2):** `run_log.py add --observed/--claimed/--inferred/--requires-observed` (`proof` block); the audit flags a Pass with
+  nothing observed or without a required observation and only COUNTS results with no proof block (never judged or rewritten).
+- **Criteria coverage (Q3):** `scripts/ac_coverage.py init/report`: criteria from the ticket memory, cases mapped by the planner,
+  verdicts (uncovered, not run, passed, partly passed, open), source `none`/`inferred` said, results under review shown.
+- **Approval files (Q5):** `scripts/check_approval_files.py` (cut files, fences, declared counts, commands with an ellipsis, declared
+  hashes); the dry runs of apply, add-cases and annotate give the same token for the same inputs (tests).
+- **Review of the phase (same day):** an older application with no `result_keys` and no run log is UNVERIFIABLE: the dry run names its origin and
+  the apply is blocked; rows of add-cases and annotate are recognised by their file and hash (and now written with `[]`); correcting
+  the status or the text of an applied execution (same case and time) is refused without a `revision_of` link to the batch that
+  applied it (`execution_key`); `ac_coverage.py report` shows workbook status, latest run-log result and the under-review note apart and
+  never reports complete coverage while one is under review or divergent (`--no-run-logs` says what it cannot see).
+- **Second review (same day):** a result without a time of execution is never given one: accepted for a case with nothing applied, else it
+  needs `revision_of` or a time with its source (a timed result after an untimed application must be later than the moment that
+  application was written); a control row is rebuilt only from a run log PROVEN to be what was applied (hash of its results equals the
+  row's hash, or `translated_from`): a divergent file makes the row unverifiable, and with stored keys a changed file is a warning;
+  `python -m adapters.excel.reconcile <workspace> <batch_id> --from <file> [--dry-run] [--expect TOKEN]` writes the missing keys of ONE row
+  only from a file proven by the hash (never accepts an unproven origin); `ac_coverage` maps carry a short `why` per association, a
+  `source` per criterion and `related` verifications (a `required` one in Question stops a totally covered criterion).
+- Tests: `tests/test_batch_integrity.py` (52).
+
+### Added (guarded Azure DevOps writes, 2026-11-09)
+- `scripts/ado_write_guard.py`: MCP server (stdio) with four tools (status, check, one comment, one attachment) that writes only to work items of the configured project assigned to a verified identity id; fails closed; reads with a separate read credential; `docs/technique-ado-write-guard.md`; `tests/test_ado_write_guard.py` (26 tests).
+
+
+### Changed (audit and build lines, phase 17.4 and PR-5, 2026-11-09)
+- **The audit presents evidence apart** (`qa_report.py audit`): valid, marked invalid (with the reason; kept on file, never
+  proof) and missing, with the counts per batch; a result whose only evidence is invalid is to fix. JSON carries the lists.
+- **`qa_report.py report`** writes `exports/<stem>.summary.md` (short: totals per platform and build, what is open and to decide,
+  evidence valid / invalid / missing) and `exports/<stem>.technical.md` (totals in detail, the complete audit, the dry-run
+  review files present), from the same data; `output.reports` chooses which. Exit 1 when something is to fix.
+- **`qa_report.py audit` prints a summary by default** (counts, every batch that needs something, caveats and decisions in
+  full; the clean batches counted); `--detail` or `output.terminal: normal` print every batch as before.
+- **`device.py check` prints the three builds**, each with its source: observed (device), intended (`mobile.build.version`)
+  and of the run (`run.build`, with `--batch`; a difference blocks). The iPhone check compares the batch too.
+
+### Changed (output layer, phase 17.4, 2026-11-09)
+- **A short card by default** (`scripts/output.py`): the preflight, the dry run of `apply` and `add_cases`, `run_log add`
+  and the device check print a few lines and say where the complete text is. `--detail` (or `QA_OUTPUT=normal`, or
+  `output.terminal: normal` in `project.yaml`) prints it as before; `--json` is unchanged. Errors, blocks, caveats and
+  decisions are never dropped by a limit; a command is never cut.
+- **`output:` section in `project.yaml`** (terminal, max_cols, max_lines, truncate, detail_files, reports), validated by
+  `validate_project.py`; framework defaults when absent.
+- **The dry run writes `<batch>.dryrun.md`**: every cell before → after in full, the batch's sha256 and the token, tied to
+  the same content and options as the token (`apply` and `add_cases`).
+- **`run_log.py plan` and `progress`**: the planned cases of a batch and a card with each case, the counts and the next
+  step; `add` prints one line (platform, case, result, evidence, next).
+- **A notice that does not change is shown once** (state in `$QA_ASSISTANT_HOME`, default `~/.qa-assistant`, per workspace).
+- Not part of this change: the Android `send` is still not validated on a real device (17.2); the presentation of
+  invalid evidence in the reports is pending (17.5); `apply --only/--skip` (17.3b) is designed, not implemented.
+
+### Changed (traceable results, phase 17.1, 2026-11-09)
+- **Evidence is never lost silently**: `run_log.py add` and `attach` take `--evidence` once with several paths or repeated;
+  every path is kept, in order, once (a repeated option kept only the last path before).
+- **The window of an execution**: `add --ended-at` (with `--executed-at`; not before it, not in the future); `ts` stays the
+  start. `run_log.py retime` corrects only the time of a result in a batch not yet applied, keeps the rest (an end already
+  recorded too, unless a new one is given) and the previous time (`retimed`); a time or an end after `recorded_at` is refused.
+- **`attach --invalid <path> --reason <text>`** marks an evidence that shows nothing useful (`evidence_invalid`) without
+  deleting it. `qa_report.py` and the Excel adapter read the new fields as any other.
+### Changed (reliable send on Android, phase 17.2, 2026-11-09)
+- **`device.py send` says what reached the app on Android**, as it did on an iPhone: an `outcome:` line after the tap
+  (`sent`, `typed, not sent` or `uncertain`). A screen that cannot be read after the tap, or to find the send control, no
+  longer ends as a bare `NO TARGET`: it is `STOPPED …` with the outcome (exit 3 or 4) and nothing is sent again. **The first
+  stdout line of an Android `send` is now `outcome: …`.**
+- A dump with no hierarchy says that a tap by coordinates still works (`tap --xy`).
+### Changed (Excel writes, phase 17.3, 2026-11-09)
+- **`add_cases --expect <token>`**: the dry run prints a `v1-<hash>` preview token (cases file, the workbook's path and
+  content, `project.yaml`, the plan and the options); the real add refuses, writing nothing, when any of them changed.
+  The add now holds the workspace's lock, like the apply. Cases already added are still not added again.
+- **The final recalculation is put in place in one step** (a copy next to the workbook, renamed over it): a stop in the
+  middle leaves the workbook as it was and no half copy behind.
+- **`apply --keep-previous`**: the result a case already had (and its status) stays in the case's notes when the batch
+  replaces it (`notes.previous_result`); part of the token only when given, so tokens of a dry run without it do not change.
+
+### Changed (traceability of applications and results, branch `claude/melhorias-rastreabilidade`, 2026-11-08)
+- **Excel preview token (A-02)**: `adapters.excel.apply` tokens are `v2-<hash>` and cover `--label`, the reporter actually
+  written (`--reported-by` or the configured one), `--no-recalc`, a fixed `--now` and the batch name, besides the batch,
+  `project.yaml` and the workbooks; the real clock is not in them. A token from before (16 hex digits) is refused: **dry runs
+  pending at the upgrade must be repeated**. The dry run prints the options covered.
+- **Execution time (A-01)**: `run_log.py add --executed-at WHEN --executed-source TEXT` (or `unknown`); every new item has
+  `recorded_at`; `ts` stays the time of the execution. Zones are never assigned; future and date-only values are refused.
+  `qa_report.py` orders by a comparable form of `ts` (`common.ts_key`). Older run logs are read as before.
+- **Resolving a Question (A-03)**: `run_log.py resolve` (in place before applying, `--into` a new batch with
+  `revision_of` after); the audit lists resolved Questions and dangling revisions; totals count the case once.
+- **Priority of a new bug (A-04)**: `run_log.py defect-rule`; an approved bug without a valid priority (when the schema
+  requires one) is refused before the dry run, a proposal may wait, the audit lists it; `/manage-bugs` asks the user.
+- **Interpreter (A-08)**: `scripts/qa_python.py` (standard library only) finds the Python with the dependencies or prints how
+  to create it; the skills' step 0 and `procedures/rules.md` §11 say so.
+
+### Changed (consolidation for the proof of concept, 2026-11-08; methodology v2.14, development plan phase 16)
+- **Privacy guard** (`scripts/check_denylist.py`): a missing, empty or unreadable list is said explicitly (exit 3 when the
+  check is required, 4 when the list cannot be read); a file that cannot be read, or a corrupt or encrypted Office file, is
+  `NOT VERIFIED` and fails the check; PDF and legacy Office files have their name checked and are listed as not inspected;
+  the log never prints a term, only its line in the list; required through `--require`, `QA_DENYLIST_REQUIRE=1` or
+  `git config --global qa-assistant.denylistRequired true`. The two denylist hooks run in their own environment (no
+  `python` needed on the PATH) and show their result even when they pass. `workspace_select.py where` reports the hooks and
+  the list. The hooks are installed in the checkout in use.
+- **CI**: `demo-e2e` is skipped (not green) without its secrets, and when it runs it reports its executed specs; the
+  unit tests' counts and skips go to the run's summary; the `install` job also syncs the eight skills to a temporary folder
+  and runs their preflight on the fictional demo; `tests.test_excel_recalc_flows` (cases added and a batch applied with the real recalculation) runs in the `golden` job.
+- **Scope**: the product is the eight skills used through Claude Code, with no interface of its own. `qa-ui` and the hub
+  were retired and their code removed (`qa_ui/`, its 7 test modules, `docs/qa-ui.md`; they stay in the git history); remote execution is outside this version. The
+  three trackers stay in scope; `docs/tracker-validation.md` separates implemented, tested with fakes and piloted for real.
+- **Method**: a project may use `context.md` as its main document, imported by `CLAUDE.md`, with the permanent rules in
+  headed sections that compaction never touches (methodology §12.2, v2.14).
+- **Demo and documentation**: the fictional demo has a `tickets:` source and two ticket bundles (`/analyze-ticket`,
+  `/test-pbi` with no credentials); `docs/demo-walkthrough.md` is run by a test; `docs/skills-evals.md` prepares ten
+  agent-behaviour scenarios (not run); the tests of the skills are described as contract tests.
+
+### Changed (documentation, 2026-11-08)
+- `README.md`: the validation section distinguishes the local environment from the CI's (Pillow 13.0.0 against 12.3.0, LibreOffice
+  26.8.2.2 against 24.2.7, 3 skipped tests locally against 16 in the `tests` job, 14 of them run in the `golden` job) and says the
+  Pillow difference was not forced away because it could break a mobile tool.
+
+### Removed (2026-11-08, approved by the owner)
+- `qa_ui/`, `tests/test_qa_ui_*.py` and `docs/qa-ui.md` (the local interface and the hub). The skills, adapters and scripts did not import
+  them; the shared coverage lives in `tests/workspace_kit.py` and `tests/test_excel_recalc_flows.py`. The skills no longer mention the
+  interface (`/qa-report`, `/analyze-ticket`, `/project-context`, `/test-pbi`, `/checkpoint`, `/manage-bugs`, `/run-tests`, `/plan-tests`).
+
+### Fixed (consolidation, 2026-11-08)
+- The test suite no longer leaves a `*-remote.git` repository in the temporary folder (`test_validate_project`).
+
+### Changed (tests, 2026-11-08)
+- `tests/qa_ui_kit.py` is now `tests/workspace_kit.py` (the helpers serve the skills' tests); two shared tests no longer
+  import `qa_ui`.
+
+### Changed (CI, 2026-11-08)
+- The `qa-audit` integration job runs one job per engine in parallel (`qa-audit (chromium|firefox|webkit)`), with
+  the same tests: in series they took 17-19 minutes. A `qa-audit` job keeps the former status name and succeeds only
+  when every engine did. The cross-engine comparison still runs with the three engines, in the Chromium job.
+- GitHub Actions updated: `actions/checkout` v5 -> v7, `actions/setup-python` v6 -> v7, `actions/setup-node`
+  v5 -> v7 (none of the inputs they removed was used).
+- `demo-e2e` without its secrets writes "NOT RUN" in the run's summary, besides the warning.
+
+### Fixed (final validation of 2026-11-08)
+- `run_log.py attach --evidence` with a path already recorded no longer rewrites the run log: evidence kept as a list
+  of one path stays a list, and only the paths not recorded yet are added after the recorded ones.
+
+### Changed (documentation, 2026-11-08)
+- `README.md`: the eight skills and what each is for, requirements, installation and skill sync, what a request
+  authorises, the validation commands and the current state; the repository's links point to `palmeida98/qa-assistant`.
+
+### Changed (skills configuration of 2026-11-08; methodology v2.13, skills-spec 2.1)
+- A request to test authorises its own scope: analysis, a plan by risk (negative, boundary and directly affected
+  regression; covered, missing and residual risk), the run on the platforms, environment and targets it names, and
+  the local records, without approving the same plan or run twice (`procedures/rules.md` §5). `/plan-tests` and
+  `/test-pbi` stop only for a request to plan, a wider scope, or a workspace rule that asks for it. Writes to a
+  workbook or a tracker, commits, pushes and syncs keep their approvals; an approval still valid (same set, preview
+  not stale) is reused across skills and on resuming.
+- The project's own rules (`CLAUDE.md` and what it imports) win where they ask for more, and the skill says which rule
+  it followed (`procedures/rules.md` §8); `/project-context` lists the rules in force. No new configuration key.
+- Evidence by risk on top of the project's policy, one artefact shared by cases with each case's part named, a block
+  kept with its diagnosis (`procedures/rules.md` §6, methodology §7.3).
+- One bug per problem: platforms grouped only when the evidence shows the same defect, differences kept apart, a link
+  not shown said to be uncertain, a platform not tested never named (methodology §9.1, `/manage-bugs`).
+- Step 0 of the skills: paths named in a prompt skip the search, not the checks; only a launcher that validated the
+  workspace (qa-ui, the workspace's CI) replaces the preflight. `/qa-report`'s contract names `dashboard.html` and
+  says the workbook is only read.
+
+### Added
+- `run_log.py attach <batch> <case> [--bug ID | --new-defect FILE] [--evidence PATH ...] [--replace-link]`: evidence or
+  a bug added to a recorded result keeps its status, observed text, time, earlier evidence and run block; before,
+  `/manage-bugs` had to `add --replace`, which dropped the evidence and rewrote `ts`.
+- `docs/README.md`, an index of the documentation.
+
+### Added (iOS pilot of 2026-11-07, `docs/pilot-improvements-2026-11-07.md`)
+- Excel: `python -m adapters.excel.apply <ws> <batch> --dry-run [--json]` runs the apply's own pipeline on a temporary
+  copy and lists the target workbook and platform, every cell before -> after (instant-only values marked
+  `<at apply time>`), the counts, new defects, the control row, the problems and "already applied"; nothing is
+  written. Its preview token makes `apply --expect <token>` refuse a stale preview. qa-ui shows the preview and applies
+  only with its token; `/checkpoint` runs the dry run first.
+- Run log: `run_log.py mode <batch> "<kind>: <why>"` and `add --mode` record how a batch runs (conversational, flows,
+  assisted, manual) before its first result; another mode later is refused, an old run log is never given one; the
+  audit and qa-ui show it.
+- iOS: `device.py --platform ios doctor`, and `check` when WebDriverAgent does not answer, give a read-only diagnosis
+  (devicectl, usbmux, port forward, WDA, profiles, signing identities and Xcode accounts as counts, the WDA log), each
+  finding confirmed / probable / unknown, the main block and the next action first; never "no cable" when Xcode sees
+  the device.
+- iOS typing: `type`/`send` choose the one enabled text field (or `--field`, or the focused one), confirm the focus,
+  refuse several or none with the list, and say the outcome of a stop (nothing typed, partly typed, typed not sent,
+  sent, uncertain); nothing is repeated automatically.
+- Streaming evidence: the sampler says what its readings could show (partial text observed; answer readable, no
+  intermediate state captured; answer text not readable; sampling failed or insufficient), excluding what was on the
+  screen before the send; `send --burst N` and `shot-burst` take limited timed screenshots with a manifest
+  (`<name>_burst.json`).
+- Device validation (07.11.2026): `mobile.field_label` for an input not exposed as a text field; the send confirmed by
+  the message on the screen when the field never shows its text; the iOS sampler reads content only (buttons and
+  scroll bars after a send are not the answer); the dry run marks instant cells by a second run at another instant;
+  `doctor` counts Xcode accounts from the account list, opens and closes one session to prove UI automation (an older
+  refusal in the WDA log is history once a session opens) and recognises "Not authorized for performing UI testing";
+  qa-ui shows the count changes and no empty output box; `check_denylist.py` says NOT CONFIGURED without a list
+  (`--require`: exit 3).
+- Backlog of the device validation: the burst captures on its own clock (a thread); `send --read-hidden` reads an
+  answer exposed only as invisible elements, apart; `send` prints `timing:` and reads the screen three times before
+  the tap; `doctor --no-session`; the qa-ui preview grouped by sheet.
+
+### Fixed (audit of 2026-11-06, `docs/audit-2026-11-06.md`)
+- Closing of the audit (07.11.2026): the workbook rule is `route_workbook` and stops (exit 4, nothing written) on a
+  name without a recognisable platform, a name matching two workbooks or two platforms, a name that contradicts
+  `run.platform`, a missing or unreadable workbook, or a batch already applied to another workbook; `run_log` treats a
+  batch applied to any declared workbook as immutable. `"applies": "<batch>"` records an earlier execution in the
+  workbook without a time of its own: the report keeps the execution current and shows the applied status apart; a
+  result without build is shown as `unknown`. qa-ui: the Overview names the workbooks, a run log says its build
+  (`unknown`), platform and workbook, an unreadable workbook is a problem and not a dropped connection, focus returns
+  to the heading after an action. Lint (ruff 0.16.8) clean again.
+- Workbooks: one rule picks a batch's workbook (`excel.workbooks`, `workbook_for`) for the apply, `run_log`, the
+  reports, the CI and `qa_ui`; an iOS batch no longer lands in the default workbook, and an applied iOS batch is
+  immutable. The apply holds the workspace lock and saves through a verified temporary file (two applies at once
+  corrupted the workbook). New defects take the run's build; an unmapped `new_defect` key is refused.
+- Writes: `common.atomic_write` (no link followed at `<file>.tmp`), `history/` refused in any case, the lock never
+  empty and reentrant through links, the compaction's copies never overwritten nor written through a link, sync never
+  writes through or removes a link and retires only what its record installed.
+- Results: `qa_report.py` counts an unreadable application as not applied, never lets a file's modification time
+  decide the current result (`revision_of` does; an undecided tie is listed), marks each current result as applied or
+  not, groups builds by version and code, flags results without `ts`, and is short by default (`--detail`).
+  `run_log.py` refuses a second result of a case without `--replace` (and prints the one replaced) and a build or
+  environment filled in after results without one; `Question` is stored in one spelling.
+- Tickets: the analysis validates types (a non-list basis broke the memory) and comment sources (structured, both
+  ways); `content_unavailable` keeps content not opened as not read; children not expanded are listed as
+  `not-expanded`; the copyable prompt marks tracker text; the context block says when a ticket changed after its
+  analysis, labels suggestions and never suggests a Removed ticket as a verification candidate.
+- `/test-pbi`: `pbi_state.py check` says what it could not compare (exit 3) and `--reopen` returns the steps to review;
+  `published` needs `--confirmed-by` and refuses a reused key; `blocked` needs a note; links of other hosts refused.
+- Preflight: a valid configuration and being ready to run are separate (`Ready:` per platform, with the capability
+  blocked and the action); Maestro is required only where it is used; `mobile.ios` adds `xcrun` and WebDriverAgent;
+  an unknown or retired skill name lists the skills; `where` says when the installed skills include uncommitted files.
+- The iPhone backend (`device_ios.py`, `device.py --platform ios`) is in the main checkout, with `check` giving the
+  same ready/next report as Android.
+- Procedures no longer commit by themselves; `/qa-report` writes only its report; bug approval is one batch review;
+  the README and the `project.yaml` template no longer name removed skills.
+
+### Changed
+- Skills version 2 (06.11.2026, `docs/skills-spec.md`): eight skills replace the thirteen of version 1 —
+  `/project-context`, `/analyze-ticket`, `/plan-tests`, `/run-tests`, `/manage-bugs`, `/qa-report`, `/checkpoint`,
+  `/test-pbi`. Their long procedures are in `docs/procedures/`; new helpers `scripts/qa_report.py` and
+  `scripts/pbi_state.py`; `sync_skills.py` checks `requires-docs`, retires the version 1 names and records the files not
+  committed; the preflight prints a route per module. The names map in `docs/skills-guide.md` §6.
+
+### Fixed
+- `common.pid_alive` on macOS and the BSDs (no `/proc`): a dead holder not yet reaped (a zombie) counted as alive, so
+  its workspace lock was never taken over; the state now comes from `ps` (`test_two_real_processes_and_the_death_of_the_holder`
+  failed on macOS for this reason).
+- `compact_context.py` raised on a section with no dated entry (an empty `## Current state`).
+- `qa_report.py`: two results of a case with the same instant are decided by the order of application, then of writing,
+  never by the batch's name.
+- The Playwright helper `integrations/playwright/qa-audit.ts` is in English (plan 8.11): `auditState(page, testInfo,
+  name, { failOn, checks, redact })`, before `auditarEstado(…, { falharEm, verificacoes, redigir })`. The workspace
+  layer that calls the engine is in English too (`scripts/audit_a11y.py`, `/audit-accessibility`).
+- `visual` is no longer part of `--type full` (plan 8.16): it keeps screenshots of the audited site, logged-in
+  pages included, in the home folder between runs, so it runs only when named (`--type visual`).
+- Security: `cookie-samesite-unset` (needs-human, info) for a cookie without a declared SameSite, or set by
+  JavaScript.
+- Functional: a page listed with `crawl.audit_error_pages` that answers 4xx is `error-status-served` (warning, low),
+  no longer a broken link; a page linking to itself is not its own referrer.
+
+### Fixed
+- Accessibility (plan 8.17): focus visibility is decided by pixels. An element with no computed style change when
+  focused is compared with a screenshot of its box plus a margin, focused and blurred: identical pixels are
+  `focus-not-visible` (problem, medium, confidence high); different pixels pass (focus drawn by a pseudo-element or
+  a parent). `focus-visible` (needs-human) is left only where the pixels cannot decide. The keyboard walk puts the
+  focus and the scroll back where they were; findings say "and N more" past five elements; `data:` URIs in HTML
+  evidence are shortened.
+- `cookie-samesite-none-insecure` was reported in Firefox and WebKit for cookies without any SameSite (those engines
+  show a missing attribute as `None`); it is now reported only when `SameSite=None` is declared in `Set-Cookie`.
+
+### Added
+- `qa-audit check` (plan 8.15): audits a page another tool has open, in its current state, over the Chrome DevTools
+  Protocol (loopback only): the accessibility checks (axe by default; keyboard and reflow opt-in) without
+  navigating, reloading, clicking or typing. Playwright helper `integrations/playwright/qa-audit.ts`
+  (`auditarEstado`) for the workspace's N2 specs.
+
+## [0.2.0] - 2026-09-26
+
+### Added
+- Several engines in one run (plan 8.14): `--browser chromium,firefox,webkit` or `--browser all` runs one audit per
+  engine (a sub-folder each) and writes `compatibility.json/.md/.html`: findings, pages and HTTP statuses that
+  differ between engines, as needs-human findings. An engine that cannot start does not stop the others; `manual`
+  login is refused with several engines (use `storage-state`).
+- Sitemap discovery (plan 8.13): `--sitemap` / `crawl.sitemap` (off by default) also queues the pages listed in
+  the site's sitemap (`robots.txt` `Sitemap:` lines, else `/sitemap.xml`; one level of sitemap index), same origin
+  only and through every discovery rule; entity declarations refused, size and count limits; status in the report.
+- Saved login sessions (plan 8.12): `auth.method: storage-state` reuses a session saved once with
+  `qa-audit login <url> --config FILE` (`login_method` `manual` or `form`); nothing is submitted during the audit,
+  an expired session is exit 3 with the command to renew it. The state file is refused inside the output folder or
+  a Git working tree, its cookie values are redacted in every output, and `qa-audit sessions` lists or deletes the
+  saved sessions.
+- `crawl.audit_error_pages` (off by default): the listed pages (start URL and `crawl.pages`) that answer 4xx are
+  audited as content, for single-page applications whose server answers 404 to a deep link; each one is noted in the
+  report. Pages found by following links and 5xx answers are never audited that way.
+- Login before the crawl (plan 8.10): `auth.method` `form` (credentials from environment variables) and `manual`
+  (the person logs in in a visible browser: Active Directory, second factors); one attempt, success check, session
+  expiry stops the crawl, credentials redacted in every output, traces refused with `auth`. Explicit page list
+  `crawl.pages` and `crawl.follow_links`.
+- Install scripts `scripts/install.sh` and `scripts/install.ps1` (virtual environment, package with the visual
+  extra, browsers, `doctor`); user guide `docs/qa-audit-guide.md`; fictional example `examples/qa-audit/` (kept
+  valid by a test); CI job `install`: clean checkout, install script, audit of the local site (plan 8.9).
+- Visual module (plan 8.8): full-page screenshots per viewport compared with baselines (baseline, current and diff
+  images; needs-human), horizontal overflow per viewport, missing viewport meta tag. Baselines outside any
+  repository (`~/.qa-audit/baselines`, `--baseline-dir`), `--update-baseline`, and `qa-audit baselines` to list or
+  delete them. A module asked for by name that cannot run here is a usage error.
+- Functional module (plan 8.7): broken links (visited pages, plus HEAD checks of unvisited same-origin links; never
+  excluded or robots-disallowed ones), broken resources, uncaught exceptions, console errors, redirect chains,
+  e-mail fields without validation; `--allow-submit` submits only the forms listed in the configuration.
+- Performance module (plan 8.6): TTFB, FCP, LCP and CLS with the web.dev thresholds; DNS, connection, TLS,
+  DOMContentLoaded, load, requests and transfer sizes measured only unless a budget is configured. Metrics table
+  (observed · threshold · result) in every report and `metrics.csv`; `n/a` where an engine cannot measure.
+- Security module (passive, plan 8.5): HTTPS, HTTP→HTTPS redirect, TLS protocol and certificate expiry, HSTS, CSP,
+  clickjacking, nosniff, version disclosure, cookie flags (names and flags only), mixed content, forms posting to
+  HTTP. Reported once per check with the affected pages.
+- `--ignore-https-errors` for sites with certificates the browser rejects (trust then not judged).
+- HTTPS fixture (self-signed, two-day certificate) and security integration tests.
+
+### Changed
+- Accessibility findings' `references` carry the WCAG version and level of each axe tag (`WCAG 2.0 AA`,
+  `WCAG 2.2 AA`), besides the criteria.
+- The workspace's `scripts/auditar_a11y.py` (`/auditar-acessibilidade`) runs on this engine; the separate Node tool
+  `tools/a11y/` is gone.
+- Pages answering 4xx/5xx are no longer audited as content (they are broken links).
+- Module `order` (readers before page-changing modules) and `validate_config` (bad module configuration is exit 2).
+
+### Fixed
+- A page reached again through a redirect was audited twice by every module; it is now recorded as the same page.
+- `doctor` tests each browser's cryptography (a Firefox that cannot load HTTPS is no longer reported as ready).
+
+## [0.1.0] - 2026-09-25
+
+### Added
+- `qa-audit` engine alongside the workspace layer (plan phase 8, `docs/qa-audit.md`).
+- CLI: `qa-audit <url>`, `qa-audit doctor`, `qa-audit version`; exit codes 0–4.
+- Configuration with precedence and refusal of credentials in files.
+- Browser layer for Chromium, Firefox and WebKit; viewport, device, video and trace.
+- Same-origin, GET-only discovery with trap-link exclusions, `robots.txt`, delay and identifiable user agent.
+- Findings with the evidence rule, conservative severities and statuses (problem, warning, needs-human).
+- Reports: terminal, JSON, CSV (formula-safe), Markdown and self-contained HTML (CSP, escaped content).
+- Accessibility module: bundled axe-core 4.13.0 (verified), keyboard walk, reflow at 320 px, manual checklist.
+- Local fixture site, recording proxy, unit and integration tests; CI job with the three engines.

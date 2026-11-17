@@ -1,0 +1,11 @@
+{
+  "name": "demo-saucedemo-e2e",
+  "private": true,
+  "description": "The demo's N2 regression (technique-browser.md section 13; plan 2.5)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

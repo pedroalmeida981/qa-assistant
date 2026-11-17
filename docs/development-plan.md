@@ -1,0 +1,2098 @@
+# Development plan — qa-assistant
+
+> Source of truth of the framework's roadmap. Version 1.2 · updated 2026-11-08 (in English since plan 8.11). Product scope decided on 08.11.2026: see [Product scope](#product-scope-decision-of-08112026) and phase 16.
+>
+> Universal: no name of a real client, company, environment or project enters here. The state of each real pilot lives in the `context.md` of its workspace (`qa-workspaces/<company>/<project>/`), never in this file.
+>
+> Names: this plan uses the current names of files, skills, scripts and keys, also in the history of tasks done before plan 8.11 (when they were in Portuguese); the old names are listed in 8.11. Commit hashes point to the code as it was at the time.
+
+---
+
+## How to use this plan in Claude Code
+
+1. Open Claude Code at the root of the repository (`cd $HOME\qa-assistant` and then `claude`).
+2. Ask for one task at a time, by number: *"Read docs/development-plan.md and do task 1.1."*
+3. Before writing code, Claude Code describes what it will do and waits for confirmation.
+4. A task is only `[x]` when **every** acceptance criterion is met and checked (not just "it ran").
+5. One commit per task, with the message `<phase>.<task>: <summary>` (e.g. `1.1: skills analyze-feature, generate-cases, plan-batch, checkpoint`). After the commit, add the hash next to the task.
+6. The privacy guards (detect-secrets + denylist) are never worked around. If a commit is blocked, the content is fixed — never the guard.
+7. From task 1.5 on, any change in `adapters/` or `docs/technique-excel.md` must pass the golden test before the commit (methodology §15).
+8. Example and test data are always fictional.
+
+---
+
+## Summary state
+
+| Phase | Goal | State |
+|---|---|---|
+| 0 | Base: repository, universal documents, guards, templates | Done |
+| 1 | Complete the core: missing skills, universal Excel adapter, golden test | Done |
+| 2 | Browser automation with the Playwright MCP, public demo, pilot | Done (pilot 2.4 on a public practice site, 25.09.2026) |
+| 3 | New technique modules: API, accessibility, mobile | Done |
+| 4 | The framework's own CI | Done |
+| 5 | Interface: progress dashboard per workspace | Done |
+| 6 | Portfolio: README, demo, decision on the repository's visibility | Done (the repository public by the user's decision, 20.10.2026; private before) |
+| 7 | Closing: CI on Linux, pilot, real golden, protected history, fixed versions, reproducible demo, scope decisions, v1.0 | Done: **v1.0** (25.09.2026) |
+| 8 | `qa-audit`: automated audit engine alongside the workspace layer (`docs/qa-audit.md`); and the translation (8.11) | 8.0–8.10 done (8.10 login merged 26.09.2026; `/audit-accessibility` on `qa-audit` and `tools/a11y/` retired, 26.09.2026); 8.12 saved sessions, 8.13 sitemap discovery and 8.14 several engines in one run, 8.15 `qa-audit check` and 8.16 fixes from the first real use done (26.09.2026); 8.17 (focus visibility decided by pixels) done (26.09.2026); 8.11 (everything in English) done (27.09.2026) |
+| 9 | Conversational apps on a device and portable workspaces: drive an Android device/emulator from the framework, and clone a project's workspace on any computer and keep testing | Done (28.09.2026) |
+| 10 | Jira (Xray) and Azure DevOps adapters: results, bugs, importing and exporting cases, with approval and without duplicates (revises 7.7) | Done; 10.5 (pilot) postponed by the user (29.09.2026), and moved to the end of the project (user, 12.10.2026) — validated only against fakes and fictional goldens: 10.0 (specification), 10.1 (common base) and 10.2 (Jira + Xray) done (28.09.2026); 10.3 (Azure DevOps) and 10.4 (skills) done (29.09.2026); the global copy of the skills synced after the merge; 10.6 (adding approved cases to an Excel workbook) done (04.10.2026) |
+| 11 | Remote execution: a project's mobile tests run on a GitHub Actions runner (emulator + Claude Code headless) from the workspace's private repository, with builds as releases, the manual login through an issue comment and the results reviewed in a pull request | **Outside this version's scope (08.11.2026):** not a requirement of the assistant used through Claude Code; the code and tests stay, unvalidated and not developed further here. History: 11.0–11.6 done (29.09.2026), validated only against fakes and the fictional golden; 11.7 (a real device without a SIM: the companion driver `tools/android-driver/` and the pilot on the user's phone, run locally) done (12.10.2026); 11.8 (the pilot on a runner, and the optional AVD cache of 11.6) postponed by the user (04.10.2026), then started on a real workspace (13.10.2026): in progress, the end-to-end waits for the user; its prerequisite, the runner's emulator over `mobile.serial` / `mobile.input`, done (13.10.2026) |
+| 12 | `qa-ui`: a local web interface for a workspace — cases in, the suggested types of test, the batch plan, the runs (Claude Code headless and the scripts), the user's approvals and the apply step (`docs/qa-ui.md`) | **Retired (08.11.2026):** no interface of its own is part of the product, and none is promised for a later phase; the code, its tests and its specification were removed (phase 16; they stay in the git history). History: 12.0–12.5 done (08.10.2026), validated against a fake `claude` and the fictional fixture; 12.6 (17.10.2026): the first real batches (a mobile workspace) and the fixes they led to; a real batch on a web site is still the user's to run |
+| 13 | `qa-ui` multi-project hub: discovery, Projects, in-hub navigation, management screens | **Retired (08.11.2026):** the hub is not developed and its code is removed; 13.4–13.7 are cancelled, not postponed. History: 13.0–13.1 done (21.10.2026); 13.2–13.3 done (22.10.2026; merged 27.10.2026, PR #36); 13.4–13.7 not yet completed |
+| 14 | `/analyze-tickets`: read-only ticket analysis with a local memory | 14.1 done (01.11.2026; merged, PR #37); the real read of each service is 15.4 |
+| 15 | Central skills and project workspaces: finding the framework, selecting a project, the skills' contract, a memory that does not rewind, a usable verification prompt, the impact on cases | 15.0–15.3 and 15.5 done (01.11.2026); 15.4: Azure DevOps through a browser done, its API route and Jira pending; 15.6 audit and 15.7 consolidation done (01.11.2026); 15.8 daily use of the mobile flow done (02.11.2026) |
+
+| 16 | Consolidation for the proof of concept: guards, CI honesty, scope, documentation, the three trackers' real state | In progress (08.11.2026): see phase 16 |
+| 17 | Output, traceability and write safety: what a real two-platform mobile test showed (terminal output, results and evidence, Excel writes, devices) | In progress (09.11.2026): 17.0 registered, 17.1 under review; see phase 17 |
+
+Recommended order: 1.1 → 1.2 → 1.3 → 1.4 → 1.5 → 2.x → 3.x → 4 → 5 → 6. The real pilot (2.4) can move forward in parallel, in its workspace, at any time after 2.2.
+
+---
+
+## Product scope (decision of 08.11.2026)
+
+- **What the product is:** a QA assistant used exclusively through Claude Code, with eight skills (`/project-context`,
+  `/analyze-ticket`, `/plan-tests`, `/run-tests`, `/manage-bugs`, `/qa-report`, `/checkpoint`, `/test-pbi`) over project workspaces
+  that live outside this repository. It has **no hub, web interface, graphical application or launcher of its own**, and none
+  is promised for a later phase. HTML or Excel reports that a command produces (`scripts/build_dashboard.py`,
+  `scripts/qa_report.py`, `qa-audit`'s report) remain outputs, not a management interface.
+- **Trackers:** Excel, Azure DevOps and Jira with Xray, writes included. Code tested with fakes is not a validated
+  integration: [tracker-validation.md](tracker-validation.md) says which is which.
+- **Outside this version:** remote execution (phase 11): its code stays, unvalidated and not developed. **Removed:** `qa-ui` and
+  the hub (phases 12 and 13), by the owner's approval of a concrete list (phase 16.3); phases 12 and 13 below are history.
+- **Not decided here:** the project names, credentials, personal data, internal information and evidence stay in the private
+  workspaces; a project's name is not a secret in itself.
+
+
+## Phase 0 — Base (done)
+
+- [x] Private personal repository `qa-assistant` on GitHub.
+- [x] `docs/methodology.md`, `docs/technique-browser.md`, `docs/technique-excel.md`.
+- [x] Root `CLAUDE.md` with references and fixed rules.
+- [x] `.gitignore` and privacy guards in pre-commit: `detect-secrets` + `scripts/check_denylist.py` (personal denylist in `~/.qa-denylist.txt`, outside the repository). Tested both ways.
+- [x] Workspace templates: `docs/context-template.md`, `docs/project.yaml`.
+- [x] Skills: `project-onboarding`, `run-batch`, `log-bug`, `end-session` (in `.claude/skills/` and a global copy in `~/.claude/skills/`).
+- [x] Flow validated in a real pilot: onboarding, import of an existing workbook and scripts, migration of the recalculation to headless LibreOffice, full sweep of errors without changing the official file.
+
+Lessons of the pilot already incorporated in the framework: never recalculate in a synced/mounted folder; the recalculation mechanism is not portable between environments; the status vocabulary is per project; never claim "validated" without comparing numbers.
+
+---
+
+## Phase 1 — Complete the core
+
+### 1.1 Missing skills — `4e2da2a`
+`CLAUDE.md` lists 8 commands, but only 4 skills exist. Create the missing ones in `.claude/skills/<name>/SKILL.md`:
+
+- `analyze-feature` — analyses a feature per role/profile and produces the list of behaviours to test (methodology §5).
+- `generate-cases` — generates test cases from the analysis, with the techniques of §5 (equivalence partitioning, boundary values, decision tables, state transitions, negatives), in the format of the project's tracker (read from `project.yaml`).
+- `plan-batch` — groups cases by area + feature + platform + role + flow to minimise logins and context switches (§6).
+- `checkpoint` — saves the run log, updates `context.md` in the format of §12.2 and makes a local commit in the workspace.
+
+Acceptance criteria:
+- [x] `dir .claude\skills` shows 8 folders, each with `SKILL.md` and a `name` + `description` frontmatter.
+- [x] Each skill cites the methodology section it implements and contains nothing specific to a project.
+- [x] Inside `claude`, typing `/` shows the 8 skills with the `(project)` label. *(confirmed by the user, 24.09.2026)*
+- [x] Copy updated in `~/.claude/skills/`.
+- [x] The commit passes both guards.
+
+Note: `run_log` added to the template `docs/project.yaml` (path of the run log used by `checkpoint`; by default `runs/`, never `history/`).
+
+### 1.2 Universal Excel adapter — `158d310`
+Create `adapters/excel/base.py`, generalising the pattern of `technique-excel.md` §1: load keeping formulas, apply a batch, regenerate the defects view, cross-check, save only if clean (otherwise `.REVIEWED.xlsx`), recalculate safely.
+
+- All layout information (file, prefix → sheet map, column names, valid case and defect statuses, "closed" defect statuses) comes from a configuration, never hardcoded.
+- `recalc_safe()` with two selectable mechanisms: headless LibreOffice (default) and Excel through COM (optional, Windows only). Always on a copy in a local temporary folder.
+- Detection of a batch applied again (`technique-excel.md` §5 requires that applying the same batch again duplicates neither notes nor defects).
+
+Acceptance criteria:
+- [x] No sheet, column or status name in the code (checkable with grep).
+- [x] Works with a fictional configuration (used in 1.4).
+- [x] Applying the same batch twice does not change the result the second time.
+- [x] `docs/technique-excel.md` updated to point to the adapter.
+
+Notes:
+- Also validated by equivalence with a real `qa_lib.py` (copy of the workbook, synthetic batch): 0 differences in values, formulas and styles. Intentional differences: the adapter's control sheet and the extra "related case does not exist" check in the cross-check.
+- The only sheet name in the code: the adapter's own control sheet (by default; configurable).
+- The `excel-com` mechanism is implemented but **not validated** (no Excel on the development machine).
+- Out of scope: export for other teams (`technique-excel.md` §6) and the "archive" rule for resolved bugs.
+
+### 1.3 Excel configuration in `project.yaml` — `259fbfc` (2nd criterion closed at the demo's onboarding, `5afda66`)
+Add to the template `docs/project.yaml` an `excel:` section with the fields the adapter needs. Update the `project-onboarding` skill to fill in this section **by inspecting the real headers of the workbook** (never guessing).
+
+Acceptance criteria:
+- [x] Template with comments explaining each field.
+- [x] `project-onboarding` asks/inspects and fills in `excel:`. *(checked at the demo's interactive onboarding, 2.1)*
+- [x] The adapter reads this section without further configuration.
+
+Notes:
+- `adapters/excel/inspect.py` only reads the workbook and proposes the section; what is not safe stays `CONFIRM: …` (and makes `load()` fail if it is forgotten).
+- On a copy of a real workbook it got right the case sheets and prefixes, ID columns, case statuses (from the data validation), defects sheet, ID format and 6 of the 10 columns of the view; it left to confirm the defects' status column (several validation lists), actual result/notes and the ambiguous columns of the view.
+- `ExcelAdapter.from_project(workspace)`; optional blocks left blank count as absent.
+
+### 1.4 Golden test — `c0ec70b`
+Create `tests/golden/`:
+
+- `build_fixture.py` — builds a small fictional workbook (e.g. 3 case sheets, 12 cases, 3 defects, a summary sheet with formulas).
+- `batch.json` — a fictional batch that changes statuses and creates a defect.
+- `expected.json` — the expected state after applying the batch (statuses, defects, summary totals).
+- `scripts/golden_check.py` — builds the fixture in a temporary folder, applies the batch through the adapter, recalculates and compares with `expected.json`.
+
+Acceptance criteria:
+- [x] `python scripts/golden_check.py` passes.
+- [x] Changing a value in `expected.json` on purpose makes the test fail with a clear message (and then restoring it).
+- [x] No real data: the names of cases, defects and sheets are generic.
+
+Notes:
+- `expected.json` written by hand from the rules (not generated by the adapter); `{today}` is replaced by the day's date. `--show` prints the result for review, but never rewrites the expected file.
+- Also checked: turning off the detection of a repeated batch in the adapter makes the golden fail; without LibreOffice the golden exits with code 2 and a clear message (simulated). Phase 4's CI needs to install LibreOffice.
+- The golden with a real historical batch through `QA_GOLDEN_DIR` (methodology §15) did not exist yet; a note was added to the methodology.
+
+### 1.5 Golden in pre-commit — `8feece0`
+A local hook in `.pre-commit-config.yaml` that runs `golden_check.py` when files change in `adapters/`, `tests/golden/` or `docs/technique-excel.md`.
+
+Acceptance criteria:
+- [x] A commit that only touches `docs/methodology.md` does not run the golden.
+- [x] A commit that breaks the adapter is blocked.
+
+Notes:
+- The hook also runs when `scripts/golden_check.py` itself changes (user decision, 23.09.2026).
+- Validated on a temporary branch, deleted at the end: only `methodology.md` → `Skipped`; broken adapter → `Failed` and commit blocked (HEAD unchanged); a valid change in `tests/golden/` → `Passed`.
+- Without LibreOffice the golden exits with 2 and blocks the commit: install LibreOffice, never `--no-verify`.
+
+---
+
+## Phase 2 — Browser automation (Playwright MCP)
+
+### 2.1 Demo workspace — `5afda66`
+Create `examples/demo/` inside the repository: a complete workspace (`CLAUDE.md`, `project.yaml`, `context.md`, a workbook built like the fixture) pointed at a public test practice site (e.g. saucedemo.com or the-internet.herokuapp.com). No real credentials: only the demo accounts published by the site itself, and even those in the local `.env`.
+
+It serves to develop and validate the framework without touching client data, and it is the base of the portfolio (Phase 6).
+
+Acceptance criteria:
+- [x] The demo's onboarding done with `/project-onboarding`.
+- [x] Nothing in the demo passes the denylist nor detect-secrets.
+
+Notes:
+- Site: saucedemo.com (demo accounts per role). Workbook with 18 cases of the site's own, approved by the user, in the format of the golden's fixture (instead of the fixture as it is); built by `examples/demo/build_workbook.py`.
+- The onboarding revealed two gaps, fixed: fixed paths to qa-assistant in the skill (the demo lives inside the repository) and the inspection did not recognise a defects sheet that was still empty.
+- Credentials only in the local `.env` (ignored by git); the demo password does not appear in any file of the repository.
+- Expected results not yet confirmed in the browser: confirm in 2.3.
+
+### 2.2 Playwright MCP at the onboarding — `0024c37`
+Add to the `project-onboarding` skill the registration of the Playwright MCP in the workspace:
+`claude mcp add playwright --scope project -- npx @playwright/mcp@latest`
+
+Acceptance criteria:
+- [x] `.mcp.json` created in the workspace (not in the framework's repository, except in the demo).
+- [x] `/mcp` inside `claude` shows `playwright` connected. *(confirmed by the user, 24.09.2026)*
+- [x] A login on the demo site works through the MCP. *(confirmed by the user, 24.09.2026)*
+
+Notes:
+- On Windows the command is `claude mcp add playwright --scope project -- cmd /c npx @playwright/mcp@latest`; without `cmd /c` Claude Code does not launch `npx`. The skill picks the command by operating system.
+- `@latest` kept for now; fix the version when moving to N2 (2.5). Version checked on this machine: 0.0.82.
+- `claude mcp list` shows the server as `Pending approval` until it is approved at the first start of `claude` in the workspace.
+
+### 2.3 First batch in the demo — `b9cfc1b`
+Run 5–10 cases of the demo with `/plan-batch` and `/run-batch`, apply through the adapter, `/checkpoint`.
+
+Acceptance criteria:
+- [x] Clean cross-check (and summary vs direct count matching).
+- [x] A fictional defect logged with `/log-bug` in the format of `project.yaml`: BUG-3 (problem_user, images), as `new_defect` in the batch.
+- [x] The demo's `context.md` updated.
+
+Notes:
+- The 8 approved cases, grouped by role (no session → locked_out_user → standard_user → problem_user): 6 Pass, 1 Fail (TC-PROD-005 → BUG-3), 1 Question (TC-LOGIN-006: the login appears with the right error, but the URL stays `/inventory.html`; the expected result says "goes back to the login page"). The Question stays out of the batch (the adapter refuses it) and is in `context.md` as a question.
+- **Environment difference**: run with the Playwright library in Chrome, driven by the agent with temporary scripts (deleted), because the Playwright MCP was not available in the session (2.2 to be confirmed). Provided for in `technique-browser.md` §1.
+- Lesson confirmed: the 1st observation of problem_user came back empty (the script did not wait for the product list); it was not classified on it, it was repeated with an explicit wait (`technique-browser.md` §4.3).
+- Decision by delegation: BUG-3 written without individual approval (the user asked to go ahead without asking); severity and priority Medium. Approved later by the user, with the other decisions by delegation (24.09.2026).
+- TC-LOGIN-006: the Question was answered by the user (showing the login with the right error counts as Pass, even with the URL /inventory.html); expected result rewritten and the case applied in the batch `batch_20260924_ui02`.
+
+### 2.4 Pilot in a real project
+*State (23.09.2026): prepared in the project's workspace (Playwright MCP registered, a batch of 16 read-only cases proposed, screenshots outside git); execution waiting for 2.2/2.3 and the credentials (2.2 and 2.3 done on 24.09.2026: only the credentials were missing). Detail in that workspace's `context.md`.*
+
+In the real project's workspace (outside this repository): `.env` filled in locally, Playwright MCP registered, a batch of 10–20 cases already known, comparison with the previous results. The whole record stays in that workspace's `context.md`.
+
+Here only "done" is marked and, if they come up, **generic** lessons for the methodology or technique (no names).
+
+- [x] Pilot done and compared.
+- [x] Generic lessons incorporated (if any).
+
+Notes: pilot done on 25.09.2026 **on a public practice site** (SauceDemo), in a workspace outside the repository (`qa-workspaces/pratica/saucedemo/`, created from the demo, local git): the user no longer had access to company projects and decided the pilot runs on a scenario created for it. A batch of 16 cases (10 not run + 6 retests with a previous result) run by a `claude` opened in the workspace with the Playwright MCP, applied at `/checkpoint`: 15 Pass, 1 Fail (TC-PROD-005 -> BUG-3, the same as before); the 6 retests gave the same status. The 1st run was not applied: with the MCP's persistent profile the clicks stopped reaching the page (diagnosis with three variants; solved with `--isolated`, 37 real clicks and 0 synthetic ones in the 2nd). Lessons: see 7.2.
+
+### 2.5 Promotion N1 → N2 — `19f7fc7`
+From a demo case that passed through the agent (N1), generate a deterministic Playwright test (`.spec.ts`) as in `technique-browser.md` §13.
+
+Acceptance criteria:
+- [x] `npx playwright test` runs and passes locally (3 tests in `examples/demo/e2e/specs/login.spec.ts`, on the installed Chrome). An expected result changed on purpose makes the test fail.
+- [x] The locators follow the priority of `technique-browser.md` §4.2: button by role + name (level 1); the fields have no label, only a placeholder (level 3 — an accessibility observation); visible texts (level 4). No CSS nor XPath.
+
+Notes:
+- TC-LOGIN-001, 002 and 003 promoted: two consecutive N1 Pass results (batch 2.3 and a rerun on 24.09.2026), deterministic data, stable expected result (§13). The case ID goes in the test's title; `@smoke` tag.
+- `@playwright/test` 1.63.0 fixed with a lock; credentials only through environment variables (`playwright.config.ts` reads the demo's `.env` when it exists).
+
+---
+
+## Phase 3 — New technique modules
+
+Each module: a document in `docs/` (the same structure as the existing ones: scope, execution levels, preparation, verification, evidence, security, link to the methodology, checklist) + a skill + an example in the demo.
+
+### 3.1 API — `docs/technique-api.md` + `/test-api` — `5b11b05`
+Contracts and schemas, status codes, authentication and authorisation per role, negative cases, idempotency, pagination, limits. Tools: Playwright's `request`, curl, Postman collections when the project already has them. Evidence: request/response with the secrets redacted.
+
+Acceptance criteria (3.1):
+- [x] Project-agnostic document (examples only with the Demo Shop), passes the guards.
+- [x] Skill `.claude/skills/test-api` with a valid frontmatter (`test_skills` test), global copy in sync.
+- [x] `/` shows `/test-api` with the `(project)` label. *(confirmed by the user, 24.09.2026)*
+- [x] Example run in the demo: API area with 10 cases (restful-booker, expected results from the published documentation), batch `runs/batch_20260924_api01.json` applied to the workbook: 9 Pass, 1 Fail → BUG-1 (500 to a POST without required fields); cross-check clean, recalculation OK, summary vs direct count matches.
+- [x] Reference in `CLAUDE.md` (without `@`: only read with the `api` module active, so as not to weigh on every session).
+
+Notes:
+- `scripts/api_request.py`: one request with redacted evidence (authentication headers, JSON keys with token/password/secret/api_key, and the literal value of any `.env` variable or session secret). Tokens saved with `--save-secret` in `.api-session.env` and used as `{{TOKEN}}`: the agent chains requests without ever seeing the token. Checked: no secret in the batch's 14 evidence files.
+- In Git Bash (Windows) an argument `/booking` arrives converted into `C:/Program Files/Git/booking` (MSYS path conversion). The script accepts paths without the leading slash and explains the error if it gets a converted path; the skill says to write them without the slash.
+- Decisions by delegation (the user asked to go ahead without asking): the restful-booker target, the 10 API cases and BUG-1 (priority Medium). Recorded in the demo's `context.md` for review.
+- 9 tests of `api_request.py` with a local HTTP server (no network).
+
+### 3.2 Accessibility — `docs/technique-accessibility.md` + `/audit-accessibility` — `afbdbe7`
+WCAG 2.1 AA. An automated part with axe-core through Playwright; a guided manual part (keyboard, focus order, screen reader, contrast, 200% zoom, reflow). Each failure mapped to the corresponding WCAG criterion and to the level.
+
+Acceptance criteria (3.2):
+- [x] Project-agnostic document, passes the guards.
+- [x] Skill `.claude/skills/audit-accessibility` with a valid frontmatter, global copy in sync.
+- [x] `/` shows `/audit-accessibility` with the `(project)` label. *(confirmed by the user, 24.09.2026)*
+- [x] Example run in the demo: Accessibility area (7 cases). Automated audit of 4 pages (login, products, cart, checkout-information; 3 with login): 0 WCAG 2.1 A/AA violations, best practices and 1 incomplete contrast result recorded; TC-A11Y-006 (2.4.2 A, equal titles) Fail → BUG-2. The manual TC-A11Y-005 (contrast) and TC-A11Y-007 (keyboard) stay Not run: they need the browser through the agent (Playwright MCP).
+- [x] Reference in `CLAUDE.md` (without `@`, like the API).
+
+Notes:
+- `tools/a11y/` (Node, fixed versions: Playwright 1.63.0, @axe-core/playwright 4.13.0; `npm ci --prefix tools/a11y`) only opened the pages and ran axe; it used the installed Chrome (`channel: chrome`), without downloading browsers. `scripts/audit_a11y.py` read `project.yaml`, passed the login's credentials through environment variables (never arguments) and mapped axe's tags to criteria and levels; best practices → observations, incomplete → manual review. (Replaced by the `qa-audit` engine in 8.10.)
+- A redirected page (e.g. a failed login) is treated as not audited: axe on the login page would give a false Pass.
+- The demo's workbook became rebuildable (`examples/demo/rebuild_workbook.py`: builder + batches of `runs/` in execution order, by each batch's 1st `ts`; by name, the BUG-n would swap).
+- The demo's `.env`: saucedemo accounts filled in locally by delegation, confirmed in the site's code.
+- 10 tests of `audit_a11y.py` without a browser (fictional raw axe result). The Node part did not run in CI.
+
+### 3.3 Mobile — `docs/technique-mobile.md` + `/test-mobile` — `908e922`
+Maestro flows in YAML, emulator vs. real device, gestures, permissions, deep links, offline/background states, iOS/Android differences.
+
+Acceptance criteria (3.3):
+- [x] Project-agnostic document, passes the guards.
+- [x] Skill `.claude/skills/test-mobile` with a valid frontmatter, global copy in sync.
+- [x] `/` shows `/test-mobile` with the `(project)` label. *(confirmed by the user, 24.09.2026)*
+- [x] Example run in the demo: Mobile area, 3 Maestro flows (login, locked out user, cart) run with `scripts/run_mobile.py`: 3 Pass. **In Maestro Web (beta)**, not in a native app: this machine has no adb, emulator nor device. Checked that a flow with the wrong assertion gives Fail.
+- [x] Reference in `CLAUDE.md` (without `@`).
+
+Notes:
+- `scripts/run_mobile.py`: one flow per case (the ID is the prefix of the file name); credentials from `.env` in `MAESTRO_<VAR>` variables (Maestro gives them to the flows as `${MAESTRO_<VAR>}`), never `-e` on the command line; reads Maestro's JUnit and redacts the messages. With no target (Android without a device, iOS without a simulator) the cases are Blocked and Maestro does not even run.
+- To do, when there is an emulator: an example on a native app (e.g. the Sauce Labs demo app).
+- 8 tests of `run_mobile.py` with Maestro and adb simulated (the JUnit format is Maestro 2.10's real one).
+
+### 3.4 Modules in `project.yaml` — `abfddc4`
+A closed list of valid values in `modules:` (`functional-web`, `api`, `accessibility`, `mobile`, `exploratory`) and `project-onboarding` asking which to activate.
+
+Acceptance criteria (3.4):
+- [x] Closed list in methodology §4.1 (module → technique → skill → section of `project.yaml`) and commented in the template.
+- [x] `project-onboarding` shows the list, asks which to activate, fills in the sections of the active modules and ends with `scripts/validate_project.py` without problems.
+- [x] `scripts/validate_project.py` refuses modules outside the list and active modules without their section; the demo passes (0 problems, 0 warnings). 7 tests.
+
+Notes:
+- `technique-browser.md` listed as modules `smoke`, `roles`, `visual`, `cross-browser` and `forms`, which do not exist: they became variants inside the modules, not values of `modules:`. Old references to `modules/*.md` fixed.
+- The common criteria of Phase 3 (document, skill, demo example, `CLAUDE.md`) were checked in each task (3.1–3.3); the manual check of `/` was confirmed by the user (24.09.2026).
+
+---
+
+## Phase 4 — The framework's CI
+
+### 4.1 GitHub Actions in `qa-assistant` — `1392eda`, `fa749eb`
+On each push: `golden_check.py`, `detect-secrets`, Python lint (ruff).
+
+The personal denylist does not run in CI (it lives only on your computer, on purpose); it stays the barrier in the local pre-commit.
+
+Notes:
+- `.github/workflows/ci.yml`: jobs `lint` (ruff 0.16.8, fixed), `secrets` (only the pre-commit's `detect-secrets` hook, same version and baseline) and `golden` (installs `libreoffice-calc-nogui`, ~35 s). Python 3.12 in CI; `ruff.toml` with `DTZ` off (intentional local dates).
+- Clean lint before turning the CI on: 32 warnings fixed, among them B023 in the adapter's batch application (the defect's row became a parameter of `put`; it was not a bug, but it was fragile). Golden unchanged.
+- On Linux ruff requires the execute bit on files with a shebang (`git update-index --chmod=+x`); on Windows it is not noticed.
+- Criterion 2 validated on a temporary branch deleted at the end: the broken commit was created through GitHub's API (like an edit on the site, without local hooks), because pre-commit blocks it locally and the guard is not worked around. Result: job `golden` failed with `apply.new_defects[0]: expected 'BUG-99', obtained 'BUG-4'`.
+- Private repository: the badge (in `CLAUDE.md`, until there was a README in 6.1) only shows to who has access.
+- Runners fixed at `ubuntu-24.04` (`3f72fcd`), instead of `ubuntu-latest`, which moves to Ubuntu 26 from 19.10.2026 (GitHub's warning in the jobs). The change of version stays an explicit decision.
+
+### 4.2 The demo's regression — `034d1c4`
+Run the demo's `.spec.ts` (2.5) in CI against the public site.
+
+Notes:
+- Job `demo-e2e`: Playwright's Chromium, `npm ci` and `npx playwright test` in `examples/demo/e2e`. The demo accounts come from the repository's `DEMO_SAUCE_*` secrets; without them the job issues a warning and does not run the tests (it does not fail).
+- The 1st run (24.09.2026) was before the secrets existed and only gave the warning. The job was run again after creating them: `3 passed` against the public site.
+
+Acceptance criteria (of 4.1):
+- [x] Green badge on GitHub.
+- [x] A commit that breaks the golden shows as failed in CI.
+
+Note: the regression of real projects runs in the workspace or in the CI of that project's company, never in this repository.
+
+---
+
+## Phase 5 — Interface
+
+### 5.1 Dashboard per workspace — `e6cc04f`
+`scripts/build_dashboard.py <workspace-path>` reads the workbook (through the adapter) and `context.md` and builds `dashboard.html` inside the workspace: progress per area and status, open defects by severity, last checkpoint and next steps. The HTML built stays in the workspace (in `.gitignore`), never in the repository.
+
+Notes:
+- Only reads the workbook (`load()`, never saves). A new adapter method, `open_defects()`, reused by `regenerate_active_defects()`; golden unchanged.
+- The meaning of the statuses comes from the optional `dashboard:` section of `project.yaml` (`pending | ok | fail | blocked | na`), validated against `excel.cases.statuses`; without it, the 1st status counts as pending. `project-onboarding` asks for it and puts `dashboard.html` in the workspace's `.gitignore`.
+- From `context.md` it shows the `Updated:` line and the sections execution point, pending work, questions and blockers (minimal Markdown converted in the script itself). The numbers also go in a JSON block (`#numbers`) in the HTML.
+- Only `tracker: excel` for now; another tracker exits with code 2 and a clear message.
+- Validation (24.09.2026): in the demo, 0/18 run, equal to `progress_summary()` (no runs yet). On the golden's fixture with the batch applied and recalculated, the dashboard's numbers match the Summary recalculated by LibreOffice (per area and total), `expected.json` and the order of the active view; no external `src`/`href` nor `<link>`/`@import`. The check was manual (a script in the scratchpad); if the dashboard changes a lot, it is worth making it a CI test.
+
+### 5.2 Skill `/dashboard` — `a016109`
+Builds and opens the current workspace's dashboard.
+
+Acceptance criteria (of 5.2):
+- [x] `.claude/skills/dashboard/SKILL.md` with a valid frontmatter, global copy in `~/.claude/skills/`, referred to in `CLAUDE.md` and in methodology §3.
+- [x] Following the skill's steps in the demo, the dashboard is built and opens in the browser (`build_dashboard.py --open`); with a tracker other than Excel it exits with 2 without building anything.
+- [x] Inside `claude`, typing `/` shows `/dashboard` with the `(project)` label. *(confirmed by the user, 24.09.2026)*
+
+Notes:
+- `--open` uses the `webbrowser` module with the local file's URI: the same on Windows, macOS and Linux, without shell quoting. The script now prints the state of the workbook's summary, which the skill summarises.
+- The skill forbids publishing or sending the dashboard: in a real project it has client data (methodology §1.2).
+- Found while testing: the frontmatter of `end-session` had invalid YAML since phase 0 (`: ` in the description without quotes) and Claude Code showed the 1st line of the body as the description. Fixed; `tests/test_skills.py` validates the frontmatter of every skill and that each one is in `CLAUDE.md`.
+
+Acceptance criteria (of 5.1):
+- [x] The demo's dashboard built and consistent with the workbook (totals match).
+- [x] Works offline, a single HTML file.
+
+---
+
+## Phase 6 — Portfolio
+
+### 6.1 README — `00278ee`
+Layered architecture, privacy boundary, how to start (onboarding of a new workspace), demo, available modules.
+
+Notes: `README.md` with the four layers, the privacy boundary and the guards, the workflow (mermaid diagram), the onboarding of a new project, the modules table, the demo, tests/CI and requirements. The CI badge moved from `CLAUDE.md` to the README (as planned in 4.1).
+
+### 6.2 The repository's visibility
+Decide whether the repository becomes public. Before that, required:
+- [x] Sweep **the whole history** with detect-secrets and with the denylist (not only the current state), because the first commits were made before the guards existed.
+- [x] Review `examples/demo/` looking for any non-fictional data.
+- [x] The user's decision on the visibility: **public** (user, 20.10.2026; before, private since 24.09.2026).
+
+Checks (24.09.2026, 52 commits, 219 file versions extracted from every branch):
+- detect-secrets on every version, **redone in UTF-8 mode** (the 1st sweep, in cp1252, skipped files with certain characters — see the log of 24.09): 1 finding, the line with the variable name of the demo's booker password in the old version of the demo's `project.yaml`, which is the name of a variable and not a secret (apart from the integrity hashes of the `package-lock.json` files, excluded). Confirmed that the sweep reads the files, with a planted secret (caught).
+- Denylist (text, names and content of Office files) on every version: 0 findings. Confirmed with a real term of the list planted (blocked).
+- No `.env` nor `.api-session.env` ever in the history; the demo passwords do not appear in any version; no local paths nor the machine's user name (only the repository's name on GitHub, in the badge).
+- `examples/demo/`: only public practice sites (saucedemo.com, restful-booker), demo accounts published by the sites themselves referred to by the variable's name, test data with the `QA-AUTO-` prefix, bugs of the practice sites.
+
+Re-check (14.10.2026, 222 commits of every branch, contents and messages): the denylist 0 hits; one variable name of a real workspace in a change-log row of 13.10.2026 (fixed in the current state, kept by the history and removed from the pull request's body). Decision (assistant, by the user's delegation of 14.10.2026): **still private** — making it public would need that history rewritten (a force-push of `main`), and the Actions minutes are handled by the CI running once per branch (#24) and the monthly reset. The personal denylist got exact entries for that project.
+
+Public (20.10.2026): the user made the repository public; the denylist swept over the whole history again (18 terms, contents, messages and names) found only the variable name of 13.10.2026. By the user's decision the history was rewritten (`git filter-repo --replace-text`, the name replaced by the generic wording already in the current state) and `main` force-pushed with a lease: 233 → 231 commits (the commit that had removed the name, and its merge, became empty), the final tree identical, 0 hits after; the tags predate the change and kept their commits. What the repository's owner cannot remove: the read-only `refs/pull/*` of pull requests #18 and #29 keep the old commits, until GitHub Support purges them (asked by the user). A mirror of the history before the rewrite stays outside the repository, on the user's computer, until that purge.
+
+---
+
+## Phase 7 — Closing the framework
+
+Output of the general review 2 (24.09.2026, `a57ed19`): what is missing to call qa-assistant done (v1.0). Recommended order: 7.1 → 7.2 → 7.3; 7.4, 7.5 and 7.6 in parallel; 7.7 decided right away, because it changes what the others have to cover.
+
+### 7.1 Green CI after the general review 2 — `1efa40f`
+The fix of the recalculation timeout (process group, outside Windows) can only be checked on Linux; the development machine had no active Docker nor WSL with a distribution.
+- [x] CI of `a57ed19` green in the 5 jobs (`tests/test_recalc.py` runs in the `tests` job, on Ubuntu).
+
+Notes:
+- Run 36053764682 (push of `a57ed19` + `1efa40f`, 24.09.2026): demo-e2e, lint, secrets, tests and golden green. In the `tests` job (Ubuntu) the 117 tests ran; the tests of the timeout killing the process tree (an effective timeout with a hung grandchild, through the process group), of accents arriving intact through a pipe and of the `.gitignore` in a workspace with git passed.
+
+### 7.2 Pilot in a real project (it is 2.4)
+- [x] The pilot workspace's `.env` filled in (demo accounts published by the site).
+- [x] `python scripts/validate_project.py <workspace>` without problems **with the new rules** (URLs inside the environments, `.gitignore`); whatever shows up is fixed in the workspace, never here.
+- [x] A batch of 16 cases run and compared with the previous results (closes 2.4).
+- [x] Generic lessons incorporated, anonymised (methodology §1.4, §17).
+- [x] Reassess the `executor-web` subagent (7.7): if the pilot's batches filled the main context, create it; otherwise, the generic subagent stays.
+- [x] Confirm the protection of `history/` (7.4): editing a file in `history/` is refused in a `claude` opened in the workspace.
+- [x] For 7.3: **before** applying the batch at `/checkpoint`, copy the workbook to `<workspace>/golden/<batch>/before.xlsx`; after the checkpoint is reviewed, copy the workbook to `after.xlsx`, the batch (with its original name) and write `golden.yaml` with `now` = the `applied_at` of the control sheet for that batch.
+
+Notes (7.2, 25.09.2026): pilot done on 25.09.2026 **on a public practice site** (SauceDemo), in a workspace outside the repository (`qa-workspaces/pratica/saucedemo/`, created from the demo, local git): the user no longer had access to company projects and decided the pilot runs on a scenario created for it. A batch of 16 cases (10 not run + 6 retests with a previous result) run by a `claude` opened in the workspace with the Playwright MCP, applied at `/checkpoint`: 15 Pass, 1 Fail (TC-PROD-005 -> BUG-3, the same as before); the 6 retests gave the same status. The 1st run was not applied: with the MCP's persistent profile the clicks stopped reaching the page (diagnosis with three variants; solved with `--isolated`, 37 real clicks and 0 synthetic ones in the 2nd).
+- Lessons incorporated: (1) Playwright MCP with `--secrets .env` (the assistant writes the variable's name and never sees the value; the password does not appear in the transcript) and `--isolated` (clean profile; the persistent one lost clicks), in the browser technique §1 and §3, in `/project-onboarding`, in the demo and in a guard test; (2) `validate_project` warns when the workspace's `.mcp.json` has no fixed version, `--secrets .env` or `--isolated` (the `@latest` of a real workspace passed without a warning); (3) methodology §15: the golden's `label` is the notes' label, not a description (the real golden caught the mistake); (4) a `commit-msg` guard with the denylist (a client name got through in a commit message; fixed).
+- `executor-web`: not created. The batch of 16 cases ran in a session of its own (~100 turns, 3 to 6 min) without touching the main session's context; the generic subagent / a session in the workspace are enough.
+- `history/`: in a `claude` session in the workspace, with Edit allowed and edits accepted automatically, editing a file in `history/` was refused (same hash).
+
+### 7.3 Golden with a real historical batch (`QA_GOLDEN_DIR`, methodology §15) — mechanism in `e74c281`
+- [x] `golden_check.py` accepts a workspace folder (`QA_GOLDEN_DIR` or `--dir`) with the starting workbook, batch and expected result, which stay **only in the workspace**.
+
+Notes (1st criterion, brought forward without the pilot by the user's decision, 24.09.2026):
+- Folder `<workspace>/golden/<batch>/` with `before.xlsx`, the `batch_*.json` with its original name, `after.xlsx` (output saved and reviewed) and `golden.yaml` (`now` required; `label` and `reported_by` optional). A folder with several of these runs them all. The `project.yaml` is the workspace's (the nearest folder above), with the **current** configuration.
+- Applies through the same `apply` as `/checkpoint` (with `--now`, 7.6) to a copy of `before.xlsx` in a temporary folder, compares every cell of every sheet (formula and calculated value) with `after.xlsx` and confirms that applying again changes nothing. The expected result is never generated by the script. Codes: 0 equal · 1 differences (listed per cell) · 2 incomplete folder, no `project.yaml` above or no LibreOffice.
+- The fictional one always runs first: with `QA_GOLDEN_DIR` in the environment, the `pre-commit` hook does not lose it.
+- `tests/test_golden_real.py` (fictional data, temporary workspace): passes with the right `after`, fails pointing at the changed cell, detects another instant in the dates written, runs several folders and the environment variable, refuses incomplete folders. In CI, in the `golden` job.
+- Specified in methodology §15.
+- [x] The pilot's real golden passing (the "not implemented yet" note left methodology §15 with the mechanism, in `e74c281`). 25.09.2026: the pilot workspace's golden of its batch 02: `REAL GOLDEN OK` (cells equal to `after.xlsx`, applying again has no effect).
+
+### 7.4 `history/` really protected (methodology §4 step 4, §13) — `3563f24`
+Until then the methodology promised the protection through Claude Code permissions, but nothing created it.
+- [x] `/project-onboarding` creates the workspace's `.claude/settings.json` with a `deny` of writing and editing in `history/**`.
+- [x] `validate_project` warns when the workspace does not have it; test.
+
+Notes:
+- Template `docs/workspace/settings.json` with `"deny": ["Edit(/history/**)"]`. Syntax confirmed in Claude Code's permissions documentation: the leading `/` anchors to the workspace's folder (project settings); an `Edit` rule covers every tool that edits files and the recognised Bash commands (`sed`, `tee`, `>`); a `Write(...)` rule with a path is ignored. It does not cover scripts that open files on their own (methodology §13).
+- `/project-onboarding` copies the template, or adds the rule to a `settings.json` that already exists; the demo has the same file in `examples/demo/.claude/`.
+- `validate_project`: a warning without the rule (it accepts `/history/**`, `./history/**` or `history/**`, in `settings.json` or `settings.local.json`); 2 new tests, and the demo stays with 0 problems and 0 warnings.
+- To confirm in the pilot (7.2): open `claude` in the workspace and see editing a file in `history/` refused.
+
+### 7.5 Fixed versions — `0a61bc6`
+- [x] `@playwright/mcp` with a fixed version in the demo's `.mcp.json` and in the command of `/project-onboarding` (until then `@latest`).
+- [x] `requirements.txt` with exact versions of `openpyxl` and `pyyaml` (a silent update can change the golden); updating is a decision with the golden passing.
+
+Notes:
+- `@playwright/mcp@0.0.82` (the most recent on 24.09.2026; `npx @playwright/mcp@0.0.82 --version` confirmed). Rule in the browser technique §1.
+- `openpyxl==3.1.5`, `et-xmlfile==2.0.0` (a dependency of openpyxl) and `pyyaml==6.0.3`: the same that CI already installed, so the golden does not change.
+- `tests/test_guards.py`: Python dependencies only with `==`, and a single numeric version of `@playwright/mcp` in the demo and in the skill (a forgotten `@latest` makes the test fail).
+
+### 7.6 Reproducible demo — `ced85fc`
+The rebuild put the day's dates (new defects, the view's summary, the control sheet, the file's properties) and the `.xlsx` always showed as changed in git.
+- [x] Each batch's date fixed by the batch's 1st `ts` in the rebuild (an option in `apply`, without changing the default behaviour).
+- [x] A CI test: the cells of the versioned workbook are equal to those of the builder + batches.
+
+Notes:
+- `apply --now YYYY-MM-DDTHH:MM:SS` (attribute `now` of `ExcelAdapter`): the default label, the report date of new defects, the date of the active view's summary and `applied_at` use that instant; without the option, the clock (golden unchanged). Specified in the Excel technique §1.
+- `rebuild_workbook.py [workspace]` passes each batch's 1st `ts` and accepts another folder (the test rebuilds in a temporary folder, never in the demo).
+- `tests/test_demo_reproducible.py`: `Now` (without LibreOffice: the same instant gives the same cells; the dates written are the instant's) and `Demo` (rebuild = versioned workbook, cell by cell, in every sheet; in the `golden` job). `Demo` failed against the previous workbook (dates of the day of the rebuild) and passes with the regenerated one; two rebuilds in a row give the same cells.
+- The `.xlsx` still changes byte by byte at each rebuild (file properties saved by openpyxl and by LibreOffice); the criterion is the cells'.
+
+### 7.7 Scope decisions (user) — `3ffbb62`
+Recommendations applied by the user's decision (24.09.2026).
+- [x] `qa_core` / CLI `qa`: **not built**; the adapters and the scripts are the engine. Methodology §1.1 and §2 rewritten (the internal model is the common vocabulary, not a separate database).
+- [x] Subagent `executor-web`: **not built for now**; Claude Code's generic subagent is used with the instructions of `/run-batch` (browser technique §11). Reassessed in the pilot (7.2).
+- [x] Trackers `jira` and `azure-devops`: **manual logging** until a real project needs an adapter. New methodology §4.2 (table per tracker), a comment in the template, step 7a in `/checkpoint`, and `validate_project` warns when the tracker has no adapter (new test). *Revised on 28.09.2026 by the user's decision: phase 10 builds both adapters; manual logging stays until each one is done.*
+
+### 7.8 Tidying up (optional) — `799e068`
+- [x] `scripts/common.py` with the reading of `project.yaml` and `.env` (until then `run_mobile` and `audit_a11y` imported from `api_request`), without changing behaviour.
+
+Notes:
+- `common.py`: `read_project`, `read_env`, `read_workspace_env` and the `Redactor` (with the redaction constants it uses). Used by `api_request`, `audit_a11y`, `run_mobile`, `build_dashboard` and `validate_project`; `api_request` keeps exporting the same names. -90 lines in the scripts.
+- Same behaviour: the existing tests pass without changes (only the mobile test imports the `Redactor` from `common`); a new `tests/test_common.py` (reading `.env` and `project.yaml`, the scripts' error messages kept, a single implementation). The demo run again: validation, dashboard, API, accessibility and mobile the same.
+- Seen in passing, without changing (out of scope): `run_mobile.py` with a flow that is not a file (e.g. `TC-MOB-001` instead of the path) gave `Blocked` "the flow did not run" instead of a usage error (code 2). Fixed next, separately (see the change log).
+
+### 7.9 Version 1.0
+User decision (25.09.2026): v1.0 is the **workspace layer** (methodology, skills, adapters, the pilot's flow), validated in a real project; the `qa-audit` engine has its own version (`pyproject.toml`; 0.1.0 on 25.09.2026, 0.2.0 on 26.09.2026) and is not part of v1.0's criterion.
+- [x] 7.1 to 7.6 done and the decisions of 7.7 written in the documents.
+- [x] README with the final state; tag `v1.0`; "Summary state" table with every phase of the workspace layer done (phase 8 is `qa-audit`, with its own version).
+
+---
+
+## Phase 8 — `qa-audit` engine
+
+User decisions (25.09.2026): the automated engine **lives alongside** the workspace layer (nothing of it is removed); the engine, its CLI, reports, code and documentation are in **English**; the repository stays **private and proprietary** (only the owner has access); first slice 8.1 → 8.4. This revises the 7.7 decision "no `qa_core` / CLI `qa`": the engine is a separate package (`src/qa_audit`), the workspace scripts keep working as before. Specification: `docs/qa-audit.md` (written first, methodology §15). Technical risks and their mitigations: `docs/qa-audit.md` §5–§9, §13, §14.
+
+### 8.0 Specification and decisions
+- [x] `docs/qa-audit.md`; this phase; methodology §1.1 updated.
+
+### 8.1 Package, CLI and core
+- [x] `pyproject.toml` (exact versions; proprietary, "Private :: Do Not Upload"), `src/qa_audit`, `qa-audit version` / `doctor` / `--help`, configuration with precedence and the no-credentials rule, `Finding` with the evidence rule, run folder with `.gitignore` and `--cleanup`, module registry (built-in + entry points).
+- [x] `LICENSE` (proprietary), `CONTRIBUTING.md`, `CHANGELOG.md`; `.gitignore` for output, evidence and secrets; guard test for tracked `qa-output/` paths.
+- [x] Unit tests in `tests/unit/`, run by the existing `unittest` command, pre-commit and CI.
+
+Notes (8.1): 49 unit tests (138 → 187 in the whole suite). The pre-commit `tests` hook now also runs on `src/`, `pyproject.toml`, `.gitignore` and `LICENSE`. An existing guard (the console test) caught `scripts/update_axe.py` without the UTF-8 console fix before the commit.
+
+### 8.2 Browser layer and discovery
+- [x] Engines chromium/firefox/webkit, viewport, device, video, trace; same-origin GET-only crawl with exclusions, `robots.txt`, delay and identifiable user agent.
+- [x] Local test site `tests/fixtures/site/` with trap links and a POST form; integration tests: no trap requested, nothing posted, no request outside `127.0.0.1` (recording proxy, browser traffic included).
+- [x] CI job with the three engines on Linux (job `qa-audit`, with `QA_AUDIT_REQUIRE_ENGINES=1` so a missing engine fails instead of skipping). Run 36116680629 (push of `7f61f5e`, 25.09.2026): all 6 jobs green; `doctor` in CI: chromium 153, firefox 155, webkit 26.6; 37 integration tests, none skipped.
+
+Notes (8.2): locally (Windows) Chromium and Firefox pass all integration tests; WebKit cannot start here (Windows application control blocks its `libEGL.dll`: `PrintDeps` reports "An Application Control policy has blocked this file"), skipped with that reason. The recording proxy saw only `127.0.0.1:<port>` for both engines, browser traffic included.
+
+### 8.3 Reports
+- [x] Terminal summary, JSON, CSV, Markdown and self-contained HTML (inline CSS, CSP `default-src 'none'`, audited content escaped); tests.
+
+Notes (8.3): two risks found while building the reports, both covered by tests: audited content in the HTML report (escaped + CSP, a fixture page with a hostile title and attribute) and formula injection in the CSV (cells starting with `= + - @` are prefixed with `'`). Images use no lazy loading: inside closed `<details>` they never loaded.
+
+### 8.4 Accessibility module
+- [x] axe-core 4.13.0 shipped with manifest and `scripts/update_axe.py`; violations / incomplete / manual checklist; keyboard and reflow checks; disclaimer.
+- [x] Integration: planted defects found, clean page without problems, on every available engine.
+- [x] `tools/a11y/` retired: `scripts/audit_a11y.py` and `/audit-accessibility` run on this engine (see 8.10, 26.09.2026).
+
+Notes (8.4): the npm integrity of the bundled axe-core is the same as in `tools/a11y/package-lock.json` (and a test kept both on the same version). The Firefox integration tests found three things the first design got wrong, all fixed and covered: axe evaluated from Playwright's realm cannot see page functions (X-ray wrappers), so it runs in the page realm through a `<script>` element with `evaluate` only as the CSP fallback; this Firefox build throws from `crypto.getRandomValues` (a substitute is installed only when the native call fails, and noted in the report); and Firefox headless keeps the focus on the last element at the end of a page, which the first keyboard check reported as a trap on a clean page (false positive; now a trap needs tabbable elements after the stuck one). 8.2, 8.3 and 8.4 are one commit: their integration tests exercise the three together.
+
+### 8.5 Security module (passive)
+- [x] Spec (`docs/qa-audit.md` §16), module with per-check aggregation, planted defects over HTTP and HTTPS, unit tests of every check.
+
+Notes (8.5): checks are pure functions (`modules/security/checks.py`, 15 unit tests); the module reads headers, cookie names/flags (values dropped), page HTML and TLS details, plus one `http://` request to check the redirect. The HTTPS fixture uses a self-signed certificate valid for two days (planted `tls-cert-expiring`), generated with `openssl` (Git for Windows ships one). Found on the way: this machine's Firefox cannot load **any** HTTPS page (`NS_ERROR_FAILURE`, same broken cryptography as 8.4) while `doctor` reported it ready: `doctor` now tests each browser's cryptography, and an HTTPS start page failing that way explains it. Locally Firefox HTTPS and WebKit are skipped with the reason; CI runs them.
+
+### 8.6 Performance module
+- [x] Thresholds from a cited source (web.dev: TTFB 0.8/1.8 s, FCP 1.8/3.0 s, LCP 2.5/4.0 s, CLS 0.1/0.25, confirmed on the pages on 25.09.2026), configurable; the other metrics measured only; metrics table in every report.
+
+Notes (8.6): planted defects `slow.html` (the fixture server waits 2 s: TTFB poor) and `shift.html` (banner inserted after load: CLS). What each engine measures was checked before writing the spec: Chromium everything; Firefox LCP but not CLS (reported `n/a in firefox`, never estimated). Found while designing: the accessibility module presses Tab and resizes the viewport, which would count as layout shifts; modules now run on each page by `order` (performance 0, security 10, accessibility 90), and a test checks the reflow page shows CLS 0. Bad thresholds are a usage error before the audit (`validate_config`).
+
+### 8.7 Functional module
+- [x] Broken links and resources, JavaScript errors, redirect chains, form hygiene; `--allow-submit` only for forms listed in the configuration, with a test that nothing is posted without the flag and only the listed form with it.
+
+Notes (8.7): links not visited by the crawl are checked with `HEAD` (never the excluded or robots-disallowed ones: the fixture server records the method of every request and the tests check it). Pages answering 4xx/5xx are no longer audited as content (the server's 404 page produced accessibility noise that is not about the site). Found while testing: once `functional` became a valid module, a *unit* test (usage errors) reached the runner and launched a browser that tried to resolve `shop.example` on the network; the CLI unit tests now block the runner. The first CI run of 8.7 failed on two things that did not show locally: the recording proxy caught **Firefox contacting `aus5.mozilla.org`** about a minute into the longer audit (application / add-on / media plugin updates; now disabled by preferences, and the network test keeps the browser open over a minute so background timers fire), and on Linux a cached response came without `Content-Type` (now read from `document.contentType`).
+
+### 8.8 Visual module
+- [x] Baselines per page, viewport and engine outside the repository, comparison with diff images, responsive checks; lifecycle test (created → unchanged → planted change found only on its page → updated).
+
+Notes (8.8): comparing against a baseline means keeping screenshots of the audited site between runs, the one exception to "nothing persists": they live in `~/.qa-audit/baselines` (never in the output folder or a repository, `.gitignore *` at the root), `--cleanup` leaves them on purpose, the report says where they are, and `qa-audit baselines --delete <host>` removes them. A visual difference is `needs-human`, never a bug. Rendering was deterministic between runs on Chromium and Firefox. The tests always use a temporary baselines folder. Module order: visual (70) resizes the viewport, so it runs after the readers and before accessibility, whose keyboard walk would leave focus rings in the screenshots. The first full run found a discovery bug that every module had: a link redirecting to a page already audited (`/r1` → `about.html`) audited that page twice (visual compared it with the baseline created a moment before); a page whose final URL was already audited is now recorded as "same page as …" and not audited again. On the same afternoon WebKit and Firefox's cryptography started working on this machine with Smart App Control still on (cloud reputation); `doctor` reports it and the spec says to check again rather than assume.
+
+### 8.9 Documentation, install and example
+- [x] Install scripts, user guide (`docs/qa-audit-guide.md`, the 11 points asked for: what it is, install, run, new project, modules, browsers, results, new modules, new checks, Git, client data), fictional example configuration, README section; clean clone → install → audit of the local site in CI (job `install`).
+
+Notes (8.9): `install.ps1` was tested on a fresh local clone: its first version failed only inside the script (a one-element array splatted into a native command); fixed. Writing the guide, a claim about WebKit was checked before being written and turned out wrong: WebKit 26 measures LCP (the spec and the performance README said Chromium and Firefox only); corrected in the three places. The example configuration is loaded by a test with every module's validation, so it cannot fall behind the code.
+
+### 8.10 Login (`form` and `manual`) and explicit pages
+User decision (25.09.2026): login is the next engine task; methods `form` and `manual` now, `storage-state` later. Specification: `docs/qa-audit.md` §20 and §5 (`crawl.pages`). Kept on the branch `feat/login` until the pilot (user decision, 25.09.2026) and merged into `main` on 26.09.2026, with the branch's CI green on the three engines.
+- [x] `auth:` with `form` and `manual`, one attempt, success check, session-expiry detection, credentials redacted everywhere, trace refused with auth; `crawl.pages` / `follow_links`.
+- [x] Fixture login flow (form, protected area, session that expires, wrong password) and tests: exactly one POST, credentials in no output file, a wrong password stops at the first attempt, expiry detected; `manual` tested with a login page that completes itself (the "person").
+- [x] Afterwards (separate task): `/audit-accessibility` on `qa-audit`, and `tools/a11y/` retired (26.09.2026).
+
+Notes (8.10, accessibility on the engine): user decisions (26.09.2026): `scripts/audit_a11y.py` stays as a thin
+workspace script (same command line, `project.yaml` section and workspace report; the engine opens the browser and
+runs axe), so the skill, the demo and the workbook texts keep working; `accessibility.browser` takes the engine's
+browsers and the old `chrome` becomes `chromium` with a warning. The script runs one engine audit per (login,
+origin) group, only the declared pages (`crawl.pages`, `follow_links: false`), with the credentials in the engine
+process's environment only; a login succeeds by default when the URL leaves the login page (`login.success_url` /
+`success_selector` override it). Two engine changes came out of the comparison with the old script (methodology
+§15, on the practice workspace with the public practice site): (1) the WCAG criteria alone could not tell a
+WCAG 2.2 rule from a 2.1 one, so the axe findings' `references` now carry each tag's version and level
+(`WCAG 2.2 AA`), and the script keeps the old split (a 2.2-only rule is a best practice under WCAG 2.1);
+(2) the practice site answers **HTTP 404** to the direct links of its logged-in pages (a single-page application)
+and renders them anyway: the old tool ignored the status, the engine refuses error pages. New opt-in
+`crawl.audit_error_pages` (listed pages answering 4xx only; noted in the report; user decision), set from
+`accessibility.audit_error_pages`, with integration tests on a fixture route. Result of the comparison,
+per page: the same WCAG violations (none), best practices and incompletes, except `color-contrast` incomplete on the
+products page (3 elements before, 2 now), stable over two runs of each and explained by the viewport: the engine's
+1440×900 against Playwright's default 1280×720 (at 1280×720 the engine also finds 3); the engine's viewport was
+kept. New in the report: the engine's keyboard, focus and reflow checks, as leads for the manual part.
+
+Notes (8.10): the login runs in the crawl's own browser context before the first page; the login page is excluded from the crawl, and a page that lands on it afterwards stops the crawl as "session ended" (the fixture's `account/expire.html` clears the cookie). Credentials are redacted in findings, evidence, page data, notes and errors after the run; the test greps every written file (json, csv, md, html, log) for both values and requires the `«QA_FIXTURE_USER»` placeholder to appear (the settings page shows the user name, so redaction is proven, not assumed). `success_url` matching the login page itself is a configuration error (a failed login would look like success). `manual` forces a visible browser; its test uses a fixture login page that fills and submits itself after a second, and in CI it runs under `xvfb-run`. Locally the auth tests passed on Chromium, Firefox and WebKit.
+
+### 8.11 Everything in English (workspace layer included)
+User decisions (26.09.2026, replacing "not now" of 25.09.2026): the whole repository is in English, documentation
+included; the names change too (commands, files, scripts, configuration keys); existing workspaces are converted by
+a migration script (no permanent dual vocabulary in the code); the default states and the demo are in English.
+The `qa-audit` engine is already in English and only changes where it names workspace files.
+
+Names (old -> new):
+- Docs: `metodologia-core.md` -> `methodology.md`; `tecnica-browser.md`, `tecnica-excel.md`, `tecnica-api.md`,
+  `tecnica-acessibilidade.md`, `tecnica-mobile.md` -> `technique-browser.md`, `technique-excel.md`,
+  `technique-api.md`, `technique-accessibility.md`, `technique-mobile.md`; `heuristicas.md` -> `heuristics.md`,
+  `plano-desenvolvimento.md` -> `development-plan.md`, `contexto-template.md` -> `context-template.md`,
+  `projeto.yaml` -> `project.yaml`.
+- Skills: `/onboarding-projeto` -> `/project-onboarding`, `/analisar-funcionalidade` -> `/analyze-feature`,
+  `/gerar-casos` -> `/generate-cases`, `/planear-lote` -> `/plan-batch`, `/executar-lote` -> `/run-batch`,
+  `/registar-bug` -> `/log-bug`, `/checkpoint`, `/fim-sessao` -> `/end-session`, `/painel` -> `/dashboard`,
+  `/testar-api` -> `/test-api`, `/auditar-acessibilidade` -> `/audit-accessibility`, `/testar-mobile` ->
+  `/test-mobile`. The global copies with the old names are removed.
+- Scripts: `validar_projeto.py` -> `validate_project.py`, `api_pedido.py` -> `api_request.py`, `auditar_a11y.py` ->
+  `audit_a11y.py`, `testar_mobile.py` -> `run_mobile.py`, `gerar_painel.py` -> `build_dashboard.py`,
+  `sincronizar_skills.py` -> `sync_skills.py`, `comum.py` -> `common.py`; `adapters.excel.aplicar` ->
+  `adapters.excel.apply`, `adapters.excel.inspecionar` -> `adapters.excel.inspect`, `exemplo.yaml` -> `example.yaml`;
+  demo `gerar_workbook.py` -> `build_workbook.py`, `reconstruir_workbook.py` -> `rebuild_workbook.py`.
+- Workspace: `projeto.yaml` -> `project.yaml`, `contexto.md` -> `context.md`, `historico/` -> `history/` (moved
+  unchanged, protection rule updated), new run logs `batch_*.json`.
+- Keys: every key of `project.yaml` (e.g. `modulos` -> `modules`, `excel.casos.estados` -> `excel.cases.statuses`,
+  `aba_resumo` -> `summary`), of a batch (`resultados` -> `results`, `estado` -> `status`, `resultado_obtido` ->
+  `actual_result`, `defeito_novo` -> `new_defect`) and of `golden.yaml` (`agora` -> `now`, `etiqueta` -> `label`),
+  and the values the framework defines (`remover` -> `remove`, `texto` -> `text`, module and dashboard types).
+  Values that come from a project (sheet, column and state names, texts) are never translated.
+
+Criteria:
+- [x] `python scripts/migrate_workspace.py <workspace>` (dry run by default, `--apply` to write): converts
+  `project.yaml` (keys, framework values, templates such as `{resultado}` -> `{result}`), the batches in the run
+  log folder, `golden.yaml`, `CLAUDE.md` references and the settings file; renames `projeto.yaml`, `contexto.md`,
+  `historico/` (contents byte for byte, checked by hash). It pins what an old workbook shows: the old note texts,
+  the `_qa_lotes` control sheet and the reporter "QA automatizado" when the project had the defaults, so the next
+  batch writes the same cells as before. Idempotent; refuses a workspace with uncommitted changes.
+- [x] The adapter reads an existing control sheet with the old headers (workbook data, not configuration); the
+  golden check converts an old batch and `golden.yaml` in memory, with the old defaults.
+- [x] Docs, skills, scripts, adapter, tests, CI, README, CONTRIBUTING, CHANGELOG and this plan in English;
+  messages and JSON outputs of the scripts in English. A test fails if Portuguese words come back into the
+  framework files (list of common words, outside the migration's own mapping).
+- [x] Demo in English (cases, sheets, states, batches, workbook rebuilt) and still reproducible; e2e specs pass.
+- [x] Practice workspace migrated with the script; golden real still identical; `/` shows only the new skills.
+- [x] Unit, integration (three engines) and golden tests pass; CI green (run 36305490201, 27.09.2026, after
+  giving `scripts/migrate_workspace.py` its execute bit: the first run failed only in `lint`, ruff EXE001 on Linux).
+
+Notes (8.11): the batch hash was the one design problem: the control sheet of a workbook keeps the hash of each batch
+applied, so a batch converted to the new keys would have looked new (and the real golden's `after.xlsx` would not
+match). A converted batch carries `translated_from`, the hash of its original content, which stays its identity
+(`apply_batch(identity=…)`); the golden check converts an old batch in memory the same way. The practice workspace
+was converted with the script (committing first its untracked `qa-audit.yaml`, so that it could run): 0 problems in
+`validate_project`, the real golden cell for cell equal to the `after.xlsx` written by the old code, the converted
+batches recognised as already applied, and the dashboard reading it. Its prose stays in Portuguese (project data,
+outside this repository); the framework's names, the quoted keys and options and the standard headings of
+`context.md` were converted. One mistake while doing it: a lost backslash in a replacement erased three headings of
+that `context.md`; reverted in the workspace with `git revert` and covered by the migration's test. `run_mobile.py` no
+longer assumes the `CT-` prefix in the flows' names (any case ID). The demo's e2e specs pass locally (3 login specs,
+and the state audit through `auditState` with `QA_AUDIT_CDP_PORT`). The global skills were swapped with
+`sync_skills.py --apply`, which now removes the old names; `/` lists only the new ones. Replacing this section's
+old text removed a client's short name that the denylist did not have (it had the domain and the full name).
+
+### 8.12 Saved login sessions (`auth.method: storage-state`)
+User decision (26.09.2026): next engine task after 8.10, with the design agreed before the code. Specification:
+`docs/qa-audit.md` §20.1.
+- [x] `qa-audit login <url> --config FILE`: the `login_method` login (`manual` by default, or `form`), one attempt,
+  success check, storage state saved (default `~/.qa-audit/sessions/<host>.json`, `.gitignore *`, owner-only on
+  Linux and macOS); nothing audited.
+- [x] Audit with `method: storage-state`: context from the saved state, nothing submitted; expired session (start
+  URL on the login page) is exit 3 with the `qa-audit login` hint; the file's age in the report notes.
+- [x] State file refused inside the output folder or a Git working tree; a missing file is exit 2 naming the
+  command; cookie values (6+ characters) redacted as `«cookie:NAME»`; `qa-audit sessions [--delete HOST|all]`.
+- [x] Tests: unit (validation, locations, redaction, list/delete, CLI) and integration on the fixture login (login
+  saves with exactly one POST, the audit posts nothing, an expired session stops with the hint, a wrong password
+  saves nothing, no cookie value in any written file).
+
+Notes (8.12): the fixture's session cookie became long enough to be redacted (`valid-session-fixture`) and the
+settings page carries it in the planted image's attributes, like the user name, so the redaction test proves
+something appears redacted instead of passing because nothing was written. Linking the workspace's
+`scripts/audit_a11y.py` to saved sessions is left out (a separate task, if a project needs it).
+
+### 8.13 Sitemap discovery
+User decision (26.09.2026): after 8.12, the smallest of the planned engine items; design agreed before the code.
+Specification: `docs/qa-audit.md` §5.1.
+- [x] `crawl.sitemap` / `--sitemap`, off by default: `Sitemap:` lines of `robots.txt` (relative ones resolved),
+  else `/sitemap.xml`; same origin only, same context and user agent as `robots.txt`.
+- [x] `urlset` and one level of `sitemapindex` (at most 10 files), 5 MB per file, 5000 URLs; `.gz` skipped;
+  `<!DOCTYPE` / `<!ENTITY` refused before parsing (no new dependency).
+- [x] Entries queued after the start URL and `crawl.pages`, at depth 1, through every discovery rule (exclusions,
+  `robots.txt`, login page, origin, `max_pages`); status in `results.json` (`crawl.sitemap`), a note and the HTML
+  report.
+- [x] Tests: unit (parser, entity refusal, limits, origins, relative locations, failures never stop the audit) and
+  integration (robots.txt → index → pages: the orphan page is audited; `/logout`, a robots-disallowed page and the
+  external entries are never requested; off by default changes nothing; the recording-proxy test runs with it on).
+
+Notes (8.13): the first status line dropped the problems when a sitemap had no page URLs (e.g. a nested index
+ignored); the unit test for nested indexes caught it.
+
+### 8.14 Several engines in one run (compatibility)
+User decision (26.09.2026): after 8.13, design agreed before the code. Specification: `docs/qa-audit.md` §21.
+- [x] `--browser chromium,firefox,webkit` / `all` (or `browser.engine` as a list): one complete audit per engine,
+  one after the other, in one run folder with a sub-folder per engine; one engine is exactly as before.
+- [x] Comparison (`core/compatibility.py`): a finding (module, check, page, element) in some engines only; a page
+  visited, audited or answered differently; each one a `compatibility/engine-difference` finding, `needs-human`,
+  `info`. Performance and visual baseline comparisons are not compared. `compatibility.json/.md/.html` at the
+  root of the run folder.
+- [x] An engine that cannot start is recorded and the others run; `form` logs in once per engine (noted);
+  `manual` refused with several engines (exit 2, pointing to `storage-state`); exit code the worst of the runs,
+  4 only when no engine starts, 3 when the target was reached nowhere.
+- [x] Tests: unit (comparison, engine list, manual refused, combined exit codes with fake runs) and integration
+  (a fixture page that adds an image without alt in Firefox only: exactly one difference across the three engines).
+
+Notes (8.14): one change to the agreed design: performance findings are not compared at all (the design only left
+out `n/a` metrics), since timings differ between engines and between runs and a threshold crossed in one engine is
+noise. A full compatibility run of the fixture site (three engines) gave four differences: console messages on
+two pages and mixed content blocked differently by Chromium are real engine behaviour; the `SameSite=None` one was
+**not**, contrary to what was written here at first: it was the engine's false positive found and fixed in 8.16
+(Firefox and WebKit report a cookie without SameSite as `None`). The keyboard and focus checks agreed in all three.
+
+### 8.15 Auditing states in the middle of an N2 spec (`qa-audit check`)
+User decision (26.09.2026): option (c) of the comparison (flows stay in the workspace's specs; the engine never
+clicks), design agreed before the code. Specification: `docs/qa-audit.md` §22.
+- [x] `qa-audit check --cdp URL --page-url REGEX --label NAME`: connects over CDP (loopback only) to the test's
+  browser, audits the matching tab as it is (axe by default; keyboard and reflow opt-in, noted), never navigates,
+  reloads, clicks or types, and disconnects leaving everything as it was; `check.json` / `check.md` in a run folder;
+  `--redact-env`; exit 0 / 1 (`--fail-on`, default none) / 2 / 3.
+- [x] Workspace helper `integrations/playwright/qa-audit.ts` (`auditState(page, testInfo, name, options)`):
+  runs the check for the page's URL, attaches the report, fails the test only with `failOn`; demo configuration
+  (`QA_AUDIT_CDP_PORT`, `workers: 1`) and an auditing spec of the checkout error state, run in the `demo-e2e` CI job.
+- [x] Tests: unit (loopback only, checks, tab choice, exit codes, nothing listening) and integration (a dialog that
+  opens only after a click: the defect is found only in the open state, no request reaches the site, the dialog stays
+  open and the focus is untouched; keyboard opt-in noted and viewport restored; no matching tab is exit 3).
+
+Notes (8.15): two changes to the agreed design: the helper takes the test's `testInfo` as a parameter
+(`auditState(page, testInfo, …)`), because the file lives outside the demo's Node project and can only import
+types from `@playwright/test`; and the instruction to copy the helper sits in `technique-browser.md` §13 (where N2
+specs are created) instead of `/project-onboarding`, which never creates specs. Each call writes to its own
+folder (a second call in the same test would otherwise attach the first report). The demo's spec audits the
+checkout error state (no WCAG violation found there); it is not the promotion of a case to N2.
+
+### 8.16 Fixes from the first real use
+User decisions (26.09.2026): stop adding features and use the engine on the public practice site
+(`--browser all`, login, `crawl.pages`, `audit_error_pages`, `--sitemap`), then fix what that shows.
+- [x] `cookie-samesite-none-insecure` was a false positive in Firefox and WebKit: the security module read cookies
+  from the browser's store, where those engines show a cookie without SameSite as `None`. The session now records,
+  per cookie name, the SameSite declared in `Set-Cookie` headers (never the value); `SameSite=None` is reported only
+  when declared, and a cookie without a declaration (or set by JavaScript) is `cookie-samesite-unset`
+  (needs-human, info).
+- [x] The SPA pages listed with `audit_error_pages` were reported as `broken-link` (problem, medium) "linked from"
+  themselves: they are now `error-status-served` (warning, low), and a page linking to itself is not its own
+  referrer.
+- [x] `visual` is no longer part of `full` (user decision): it stored 36 screenshots of logged-in pages in the home
+  folder without being asked for; it runs when named.
+- [x] Guide: regular expressions in YAML in single quotes (a `\.` in double quotes is an invalid escape; it
+  happened in this first use).
+- [x] Tests reproduce each case: a script-set cookie (`about.html`) and the `Set-Cookie` without SameSite
+  (`sec.html`) are `cookie-samesite-unset` in every engine and never `SameSite=None`; the SPA pages are
+  `error-status-served` and not broken links; `full` without `visual`.
+
+Notes (8.16): a second run on the practice site gave identical results in the three engines and no compatibility
+difference (the first run had one: the false positive). Still open from that use, for a person to judge:
+`focus-visible` (needs-human) on the four pages.
+
+### 8.17 Focus visibility decided by pixels (what was left from the first real use)
+Left from 8.16: `focus-visible` was `needs-human` / confidence low on the four pages in the three engines, because
+the check only compares computed styles (outline, shadow, border, background, colour, underline) and cannot see a
+focus style drawn another way. Checked on 26.09.2026 on the practice site's public login page (no login): after a
+real Tab (`:focus-visible` true), the element's area with a 6 px margin gives **identical pixels** focused and
+blurred for the three stops, in chromium, firefox and webkit. The site has no focus indicator. A person was only
+needed because the engine did not look at the pixels.
+- [x] The keyboard walk also compares a screenshot of the element's box plus a margin, focused vs blurred (caret
+  hidden, after the focus transition settles). Identical pixels mean `focus-not-visible` (problem, medium, confidence
+  high, WCAG 2.4.7) with both crops as evidence. Pixels that differ with no computed-style change pass. The style-only
+  `needs-human` stays only where the pixel test cannot decide (element off screen, zero size, or the crop keeps
+  changing on its own, e.g. an animation).
+- [x] The walk never clicks or types. The page is left as it was (focus, scroll, viewport). The time added per page
+  is measured and noted.
+- [x] The finding lists every element or says "and N more". Before, `actual` named 5 of 6 without saying so.
+  `data:` URIs in the evidence HTML are shortened (a base64 image filled the snippet of `#continue-shopping`).
+- [x] Tests (local fixtures, no network): a button with `outline: none` and no other style is `focus-not-visible`;
+  a focus style drawn only by `::after` or by a parent's `:focus-within` passes (before, it was needs-human); an
+  animated element falls back to `needs-human`. Same result in the three engines.
+- [x] A new run on the practice site (same `qa-audit.yaml`, `--browser all`) gives `focus-not-visible` on the four
+  pages, identical in the three engines, and no compatibility difference.
+
+Notes (8.17): only the stops with no computed-style change are compared by pixels (one screenshot right after Tab
+for every stop, two more for those). On the practice site that was every stop: 1.1 s for 6 stops, 4.3 s for 23
+(chromium). Screenshots use `animations: "disabled"` (a fading ring is compared at its end) and PNG bytes are
+compared directly, so Pillow is not needed. The new run (26.09.2026) gave `focus-not-visible` (problem, confidence
+high) on the four pages in the three engines, with no compatibility difference. The elements listed differ by
+engine because Tab order differs: WebKit does not stop on links by default (3 stops on the cart page against 6), and
+Firefox also stops on the sort `select`. In chromium, 1 of 23 stops on the products page passed. `/audit-accessibility`
+(`scripts/audit_a11y.py`) shows the new check with the others (2.4.7). The walk also sets the focus and the
+scroll back where they were: the note of `qa-audit check` now says so, and its test checks it.
+
+---
+
+## Phase 9 — Conversational apps on a device and portable workspaces
+
+Why: a real mobile pilot (an LLM chat app, 27–28.09.2026) was run with helpers written in the session's scratchpad,
+outside the framework: reading the screen through `adb`, tapping by text, typing accented text, sending a message and
+waiting for the reply to settle, screenshots only with the app in the foreground. Maestro flows (§4 of the mobile
+technique) did not fit: the app's answers are not deterministic, so a flow cannot assert them; the agent reads each
+answer and classifies it. The emulator needed manual work (an ARM-only APK on an x86_64 image, a magic-link login, the
+browser's first run). And the workspace was a local git repository with no remote: the project could not be continued
+on another computer. This phase brings all of that into the framework. Everything stays universal: no app, account or
+text of the pilot enters this repository (methodology §1.2); the examples use the Demo Shop.
+
+Decisions of the user (28.09.2026): one git repository per project workspace, with a **private remote**; the
+checkpoint commits locally and a push happens only with the user's approval; it must be possible to clone a workspace
+on any computer and run its tests. All phases, in order.
+
+### 9.0 Specification first (methodology §15) — done 28.09.2026
+- [x] Methodology: §4 (onboarding) — the workspace is a git repository with a private remote, created at onboarding;
+  §12 (continuity) — resuming on another computer: clone, `.env` from the user's own secret store, environment check,
+  then read `context.md`; §13 unchanged (`history/` still protected by the workspace's settings, which are versioned).
+- [x] `technique-mobile.md`: a new execution level **N1 · Device driver** (`scripts/device.py`) next to Maestro flows,
+  and when to use each (deterministic UI → flow; generated content, e.g. an AI assistant's answers → conversational
+  mode, the agent classifies); the conversational mode (one turn per step, wait for the reply to settle, text from the
+  accessibility tree and a screenshot when the tree misses content — cards, multi-line bubbles); the privacy rule
+  (screenshots and dumps only with the target app in the foreground); emulator preparation (§1) for ARM-only apps on
+  x86_64 images and deep-link / magic-link logins.
+- [x] Decisions to write down: app binaries (APK/IPA) are **not** committed (size limits, and they are the client's
+  artefact) — `project.yaml` records where the build comes from and its SHA-256; evidence (text and screenshots) is
+  committed; `.env` and saved sessions never.
+
+### 9.1 `scripts/device.py` — the device driver — done 28.09.2026
+- [x] Subcommands: `check` (target, OS, model, app version, foreground app), `dump` (visible text with bounds, one
+  line per node), `tap` (by exact text first, then contains; or by coordinates), `type` (Unicode, through Maestro's
+  `inputText` or an ADB keyboard; plain `adb input text` refuses non-ASCII), `send` (type, tap send, wait until the
+  screen is stable, print only what is new after the message), `shot` (screenshot to `evidence/<batch>/`), `link`
+  (open a deep link or a login callback with `am start`).
+- [x] Privacy: `dump` and `shot` refuse (exit 3) when the foreground app is not the workspace's `mobile.app_id`; no
+  credential ever on the command line; `link` never writes the URL (a one-time token) to a file or log.
+- [x] Reads `project.yaml` (`mobile.app_id`, device serial) through `scripts/common.py`; exit codes documented
+  (0 ok · 2 usage/configuration · 3 no target or app not in the foreground · 4 element not found).
+- [x] Tests with a fake `adb` (no device): parsing of the uiautomator XML (entities, empty text with content-desc,
+  zero-size nodes), exact-before-contains matching, the foreground guard, "stable screen" detection, `send` printing
+  only the new text.
+
+### 9.2 `scripts/setup_emulator.py` — a reproducible Android target — done 28.09.2026
+- [x] Idempotent steps: check the SDK (`emulator`, `adb`), create the AVD if missing, boot and wait for
+  `sys.boot_completed`, install the build given by path (checked against the SHA-256 in `project.yaml`), grant or
+  revoke permissions listed in `project.yaml`, turn off the browser's first run.
+- [x] Detects an ARM-only APK on an x86_64 image with native translation, and `extractNativeLibs=false`: places the
+  APK's `lib/arm64-v8a/*.so` in the app's native library folder (root image), says so, and tells that it must be
+  repeated after each reinstall. It never changes the APK.
+- [x] Refuses production builds (the rule of §3 of the technique) and says what it cannot do (e.g. a Play Store image
+  without root).
+- [x] Tests with a fake SDK/`adb`: each step skipped when already done; the ARM-only detection from a fixture APK.
+
+### 9.3 Skill `/test-mobile` with both modes — done 28.09.2026
+- [x] The skill picks the mode per batch (flows or conversational) and says why; in conversational mode: one new
+  conversation per theme when the case asks for it, a note per turn in the run log, screenshot when the dump misses
+  content, the same classification (methodology §8, technique §6).
+- [x] `/project-onboarding` asks for the mobile target and records it in `project.yaml` (`mobile.device`,
+  `mobile.build`, `mobile.permissions`); `scripts/validate_project.py` checks the new keys.
+- [x] `sync_skills.py --apply` run and the global copy in sync (apply by the parent session).
+
+### 9.4 Portable workspace (git + private remote) — done 28.09.2026
+- [x] `/project-onboarding` runs `git init` in the workspace, writes a `.gitignore` from a template in
+  `docs/workspace/` (`.env`, `.api-session.env`, saved sessions, `dashboard.html`, app binaries, Office lock files) and
+  a `.env.example` with the variable names from `project.yaml` (no values); it proposes the private remote
+  (`gh repo create --private`) and creates it only with the user's approval.
+- [x] `/checkpoint` keeps committing locally; it says how many commits are not pushed and pushes only when the user
+  says so. Never `--force`.
+- [x] `validate_project.py`: warns when there is no remote, when commits are not pushed, when `.env.example` misses a
+  variable of `project.yaml`, and when a file over 50 MB is tracked; a problem (exit 1) when `.env` is tracked.
+- [x] The privacy guard stays in `qa-assistant`; the workspace keeps client data by design, so its remote must be
+  private — `validate_project.py` checks it with `gh repo view --json visibility` when `gh` is available.
+- Note (where the spec was open): one helper, `scripts/workspace_git.py` (`init`, `status`, `remote`, `push`), shared
+  by the skills and `validate_project.py`. `init` refuses a folder inside another repository (e.g. the demo inside
+  `qa-assistant`), `.env` tracked, a `.gitignore` line that un-ignores `.env`, and a file over 50 MB in the initial
+  commit; the template also ignores `.playwright-mcp/` and `.claude/settings.local.json`. `remote --create` without
+  `--yes` only prints the command (exit 0). `push --i-confirm-private` overrides only an unconfirmed visibility, never
+  a PUBLIC one; INTERNAL counts as not private (refused by `push`, a warning in `validate_project.py`). The remote,
+  push, `.env.example` and 50 MB checks run only when the workspace is the top of its own repository; `.env` tracked
+  is a problem in any repository.
+
+### 9.5 Resume on another computer — done 28.09.2026
+- [x] `docs/workspace/resume.md` (or a section of the methodology): install `qa-assistant` (clone, `pip install -e .`,
+  `sync_skills.py --apply`), clone the workspace, fill `.env` from `.env.example`, `setup_emulator.py`, then
+  `/checkpoint`'s last point in `context.md`.
+- [x] `validate_project.py --environment`: the tools the workspace's modules need are present (adb/emulator/Maestro
+  for `mobile`, LibreOffice for the Excel recalculation, the browsers for `qa-audit`), with what is missing and how to
+  install it.
+- Note (where the spec was open): each tool is a line `[ok|missing] <tool>: <detail>` after the normal validation; a
+  missing tool is a warning (exit 0) unless `--strict` (exit 1; `--strict` without `--environment` is a usage error).
+  Always: git, the Python of `requires-python`, `.env` with every name of `.env.example` and of `project.yaml` (absent
+  and empty names listed, never a value) and the skills (`sync_skills.compare`, read only). Also `node` for
+  `functional-web`/`exploratory` (the Playwright MCP runs with `npx`; not in the plan's list); `excel-com` needs no
+  LibreOffice; `emulator` is not needed when `mobile.serial` is a real device; `ios` checks `xcrun`;
+  `mobile.build.source` only for an app (`android`/`ios`), not for `web`. The browsers are checked by the folders
+  `qa-audit doctor` looks in (nothing is started; the doctor starts them). Methodology §12.3 step 1 now also has
+  `pip install -r requirements.txt` (`pip install -e .` does not install openpyxl).
+
+### 9.6 Pilot and heuristics — done 28.09.2026
+- [x] The real mobile workspace gets its private remote (with the user's approval) and one batch is re-run from a
+  **fresh clone in another folder** (simulating another computer): the environment check passes, the batch runs with
+  `device.py`, `/checkpoint` applies it, the push is done with approval. Notes in that workspace's `context.md`, not
+  here.
+- [x] `docs/heuristics.md` gets the pilot's patterns, anonymised (methodology §17), e.g.: a chat app says a message
+  failed while it was delivered (it appears after reopening); a search shows raw highlight tags; a conversation list
+  stops at N items without paging; the accessibility tree misses cards and multi-line bubbles.
+
+Notes (9.6): the real workspace got its private remote and 33 commits pushed (with the evidence, by the user's decision); a fresh clone in another folder passed `validate_project.py --environment`, `setup_emulator.py` ran for real (skips, reinstall without `aapt2`, native libraries copied again by itself), `device.py` ran one case end to end, the adapter applied it and the push was done; the original folder pulled it. Found by the pilot: `/checkpoint` committed the run log and `context.md` but not the workbook after applying — fixed (a second commit after `apply` exits 0). Without `aapt2` in the SDK the build is reinstalled every run (harmless, slower).
+
+Acceptance of the phase: a new mobile project can be onboarded, tested in conversational mode, checkpointed and pushed,
+then cloned and continued on another computer, with no helper outside the framework; the unit tests and the fictional
+golden pass (methodology §15).
+
+---
+
+## Phase 10 — Jira (Xray) and Azure DevOps adapters
+
+Why: the framework only writes results and bugs to Excel workbooks; with `tracker: jira` or `azure-devops` everything
+after the run log is manual (7.7), and the cases cannot be read from the tracker, so `/plan-batch` and `/run-batch`
+depend on the user copying them. Many teams keep their cases and bugs in one of those two trackers. This phase gives
+them the same path as Excel: the run log stays the session's source (methodology §7.1), `/checkpoint` sends it with
+the user's approval, a batch is never sent twice without being detected, and everything is checked by tests before it
+touches a real tracker (methodology §15). Everything stays universal: examples and fixtures use the Demo Shop
+(`demo-shop.atlassian.net`, `dev.azure.com/demo-shop`, keys like `DS-123`); no real site, project, field or token
+enters this repository (methodology §1.2).
+
+Decisions of the user (28.09.2026), which **revise decision 7.7** (manual logging for `jira`/`azure-devops`):
+- adapters for **Jira with Xray** (cases are Xray `Test` issues, results go to a `Test Execution`) and for **Azure
+  DevOps Test Plans + Bugs** (results to test runs / test points with an outcome per case; bugs are work items linked
+  to the case);
+- version 1 covers four directions: (1) send the results of a batch's run log at `/checkpoint`; (2) bugs: search
+  duplicates, create, update, always with the user's approval before sending (methodology §9.4); (3) import cases from
+  the tracker (onboarding §4 step 7, `/plan-batch`, `/run-batch`); (4) export the new cases approved in
+  `/generate-cases`;
+- validation: unit tests + a **golden with recorded, fictional HTTP responses** (in `pre-commit` and CI, no network)
+  + a later **pilot by the user** on free Jira Cloud (Xray trial) and Azure DevOps organisations, in a practice
+  workspace outside the repository;
+- the repository stays private.
+
+Decisions delegated by the user to the assistant's recommendation (28.09.2026, recorded in 10.1 in the techniques and
+the template `docs/project.yaml` first, methodology §15):
+1. **Blocked / N/A in Xray**: no default mapping; `/project-onboarding` asks per project (a custom Xray status, or
+   `ABORTED`); when none is chosen the status is written with `skip`. A status mapped to `skip` or left empty
+   (unmapped) is **not sent** — it stays only in the run log, is listed in the dry-run plan, the report and the record
+   — and it is not an error. A status that is not a key of the map is refused (exit 4: a typo is never dropped
+   silently), and `Question` stays refused (exit 4). Same rule for Azure DevOps outcomes (technique-jira-xray.md §4.1,
+   technique-azure-devops.md §4.1).
+2. **Case ID**: default `id_source: key` (Jira) / `id` (Azure DevOps); the `field` / `label` / `tag` modes stay for
+   projects with their own IDs (technique-jira-xray.md §3, technique-azure-devops.md §3).
+3. **Screenshots uploaded as evidence**: off by default (`attach_evidence: false`); on only when the project's evidence
+   policy is `text+screenshot` (and `attach_evidence: true`); `validate_project.py` warns when `attach_evidence` is on
+   with `evidence: "text"` (technique-jira-xray.md §8).
+4. **Azure DevOps process**: the project must use the Agile or Scrum process (or one inherited from them); `Basic` has
+   no `Bug` type and `check` refuses it with a clear message; platform → Test Configuration through the table
+   `results.configurations` of `project.yaml` (technique-azure-devops.md §0, §3).
+5. The endpoint names in both techniques are those of the public documentation at the time of writing: 10.2 and 10.3
+   confirm each one against the current public documentation before relying on it (the techniques first if one
+   changed); the common base (10.1) calls no endpoint.
+
+Specification: `docs/technique-jira-xray.md` (with the common contract of the tracker adapters, §2) and
+`docs/technique-azure-devops.md`, written first (methodology §15). Order: 10.1 → 10.2 → 10.3 → 10.4 → 10.5; 10.2 and
+10.3 can go in parallel once 10.1 is done.
+
+### 10.0 Specification first (methodology §15) — done 28.09.2026
+- [x] `docs/technique-jira-xray.md` and `docs/technique-azure-devops.md`: scope and API versions (cloud first: Jira
+  Cloud REST v3 + Xray Cloud API v2 with client id/secret → token, the execution import and GraphQL; Azure DevOps
+  Services REST 7.1 with a PAT; Server/Data Center out of version 1), the `project.yaml` sections, status/outcome
+  mapping with `Question` refused, field mapping, case ID mapping, commands and exit codes, dry run and `--yes`,
+  idempotency, duplicate-bug search (JQL/WIQL), evidence redaction, rate limits and pagination, golden and round trip.
+- [x] Methodology §1.1 (layer 3), §2 (ID mapping in the tracker), §4 step 7, §4.2 (table per tracker), §7.1 (`run`
+  block), §9.4 (dry run), migration note v2.1 → v2.2.
+- [x] `CLAUDE.md` references the two techniques; the template `docs/project.yaml` has the `jira:` and `azure_devops:`
+  sections commented. The commands go into `CLAUDE.md`'s Scripts section when they exist (10.2/10.3), as for every
+  script so far.
+- Note (decisions where the brief was open): one entry point for both trackers, `python -m adapters.tracker
+  <workspace> check|import-cases|export-cases|apply|bug-search` (the tracker comes from `project.yaml`, so the skills do
+  not branch); exit codes 0 ok · 1 dry run with something to send (not approved yet, as `migrate_workspace.py`) · 2
+  conflict with the tracker · 3 network/auth/rate limit (a send may be partial, the next run continues) · 4 invalid
+  input or configuration · 5 sent but the read back differs (0, 2, 4 and 5 mean what they mean in
+  `adapters.excel.apply`); the case ID mapping lives in the tracker (`id_source: key|field|label`, `id|field|tag` in
+  Azure DevOps) with a cache in `<workspace>/tracker/ids.yaml`; idempotency through a record per batch in
+  `<workspace>/tracker/sent/<batch_id>.json` (hash of the results, each confirmed write) plus markers in the tracker
+  (`qa-batch-<batch_id>`, `qa-case-<id>`), and a create is never retried blindly; one Test Execution / test run per
+  batch; the new `run` block (environment, build) in the run log; `N/A`/`Blocked` have no Xray default (asked at the
+  onboarding: a custom status, `ABORTED` or `skip`); `Not run` → `TODO` in Xray and `skip` in Azure DevOps; the
+  golden is a `unittest` (no LibreOffice), not `scripts/golden_check.py`; the HTTP client uses the standard library
+  (no new dependency) and the `Redactor` of `scripts/common.py`; `/dashboard` stays Excel only (building it from what
+  the assistant sent would miss everyone else's results: not cheap to do right).
+
+### 10.1 Common tracker base (`adapters/tracker/`) — done 28.09.2026
+- [x] Configuration: `jira:` / `azure_devops:` read from `project.yaml`, credentials only by variable name (`*_var`,
+  so `workspace_git.py init` puts them in `.env.example`); a `TrackerAdapter` base with the four directions as methods
+  and the input validation of technique-jira-xray.md §2.6 (the Excel adapter's `validate_batch` rules, reused where
+  they are the same).
+- [x] HTTP client (standard library): timeouts, retries only for `429`/`5xx` on reads and idempotent writes,
+  `Retry-After`, backoff with jitter, re-authentication on one `401`, pagination helpers, a create never retried
+  blindly; the `Redactor` of `scripts/common.py` on every output, the record and the recordings; one transport
+  function the tests replace.
+- [x] ID mapping cache (`tracker/ids.yaml`), the record of what was sent (`tracker/sent/<batch_id>.json`, written
+  after each confirmed write; same hash → no request; same id, other content → 4; incomplete → continue) and the
+  marker search; never under `history/`.
+- [x] CLI `python -m adapters.tracker <workspace> <command>` with the dry run by default, `--yes`, `--now`,
+  `--record`, and the exit codes of technique-jira-xray.md §2.4.
+- [x] `validate_project.py`: the tracker's section (required keys, `https` URLs, `*_var` names, every status of the
+  vocabulary mapped, `Question` never mapped, Azure DevOps outcomes from the closed list, `skip` counted), the
+  variables in `.env` with `--environment`; the warning "no adapter" only for a tracker whose task is not done.
+  `docs/workspace/gitignore` gets `tracker/recordings/`.
+- [x] Test kit: a fake tracker transport (responses in order, each with the request it answers; the requests made
+  kept for comparison; a fault injected at request *n*) and a local `http.server` on 127.0.0.1 only for the client's
+  own timeout and retry tests. Unit tests for the client, the record, the validation and the CLI.
+- Note (choices where the spec was open): modules `errors`, `config`, `http`, `record`, `base`, `cli` and `testing`
+  (the fake transport ships in the package, so the goldens of 10.2/10.3 reuse it); the back-ends `adapters/jira` and
+  `adapters/azure_devops` are stubs with `implemented = False` (exit 4 "not implemented yet (plan 10.2/10.3)", after
+  the configuration is checked), and `config.IMPLEMENTED` is the one switch for `validate_project.py` (the "no adapter
+  yet" warning, and a missing section as a problem instead of silence); "unmapped" means a key with `skip` or an empty
+  value, a status that is not a key is exit 4; a `new_defect` needs `title`, `expected` and `observed` (methodology
+  §9.2), and the new optional `bugs.priorities` checks its priority before any request; `bug_status` needs a `bug`;
+  `apply`/`export-cases` read the credentials only after the input and the record were checked (an invalid or already
+  sent batch needs no `.env`); the record is marked complete right after the sends, before the read back, so a run
+  after exit 5 makes no request; with `--yes`, a batch where nothing is sent still gets a complete record; retries on
+  GET/HEAD/PUT/DELETE/OPTIONS and on requests marked `read`/`idempotent` (a JQL, GraphQL or WIQL query sent with
+  POST), 500 never retried, a write's 429 is exit 3 without a retry and its 502/503/504 or timeout an "uncertain
+  write" (exit 3, the marker search decides next time); the renewal after a 401 is not an attempt; backoff 1 s × 2ⁿ,
+  capped at 60 s, jitter 50–100 %; a 4xx the back-end does not handle is exit 2 for 404/409/412 and exit 4 for the
+  others; `--record` writes `tracker/recordings/<instant>-<command>/NNNN.json`; `--now` also on `export-cases`; the
+  command line is in `CLAUDE.md`'s Scripts section already (the 10.0 note said 10.2/10.3), marked as base only.
+
+### 10.2 Jira + Xray adapter (`adapters/jira/`) — done 28.09.2026
+- [x] Endpoints confirmed against the current documentation (technique §0); the technique fixed first (v1.2) where
+  the documentation differed.
+- [x] `check`; `import-cases` (JQL with `nextPageToken`, steps and preconditions through GraphQL, latest status in
+  the test plan, `tracker/cases.json` and `ids.yaml`, flags); `export-cases` (GraphQL `createTest`, folder, test
+  plan); `apply` (new bugs, one Test Execution per batch through the Xray JSON import in chunks of 100, defects,
+  comments, `bug_status` transitions, read back); `bug-search` (JQL with relaxed passes).
+- [x] Field formatting from the field schema (option, component, priority, labels with prefix, ADF ↔ text).
+- [x] Golden `tests/golden/jira/` (scenarios of technique §10.1) and the round trip (§10.2), both in the unit tests.
+- [x] `CLAUDE.md` Scripts section: the `adapters.tracker` commands and their exit codes.
+- Note — endpoints confirmed (28.09.2026) and where:
+  - Jira Cloud REST v3, from its OpenAPI description
+    (https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json; reference
+    https://developer.atlassian.com/cloud/jira/platform/rest/v3/): `GET /rest/api/3/myself`, `GET
+    /rest/api/3/project/{key}` (with `issueTypes`), `GET /rest/api/3/project/{key}/statuses`, `GET /rest/api/3/field`,
+    `GET /rest/api/3/issue/createmeta/{project}/issuetypes/{issueTypeId}` (the old `GET /rest/api/3/issue/createmeta`
+    is deprecated), `POST /rest/api/3/search/jql` (enhanced search: `jql`, `fields`, `maxResults`, `nextPageToken`;
+    answer `issues`, `nextPageToken`, `isLast`; the old `/rest/api/3/search` is "currently being removed"), `POST
+    /rest/api/3/issue`, `PUT /rest/api/3/issue/{key}`, `GET`/`POST /rest/api/3/issue/{key}/comment`, `GET`/`POST
+    /rest/api/3/issue/{key}/transitions`, `GET /rest/api/3/issueLinkType`, `POST /rest/api/3/issueLink`;
+  - Xray Cloud REST v2: `POST /api/v2/authenticate` (the token as a JSON string;
+    https://docs.getxray.app/display/XRAYCLOUD/Authentication+-+REST+v2), `POST /api/v2/import/execution` and `POST
+    /api/v2/import/execution/multipart` (parts `results` and `info`; in the multipart one the results' `info` is
+    ignored; https://docs.getxray.app/display/XRAYCLOUD/Import+Execution+Results+-+REST+v2), the Xray JSON format
+    (`testExecutionKey`, `info.testPlanKey`/`testEnvironments`, per test `testKey`, `status`, `comment`,
+    `start`/`finish`, `defects`, `evidence` with `data`/`filename`/`contentType`;
+    https://docs.getxray.app/display/XRAYCLOUD/Using+Xray+JSON+format+to+import+execution+results);
+  - Xray Cloud GraphQL (https://us.xray.cloud.getxray.app/doc/graphql/): `getStatuses(projectId)`, `getTests(issueIds,
+    limit ≤ 100, start)` (with a `jql` matching more than 100 issues it errors), the Test fields `testType`, `steps`
+    (`action`, `data`, `result`), `preconditions`, `status(testPlan:)`, `getTestExecution(issueId)` → `testRuns(limit,
+    start)` (`status`, `defects` as issue ids, `test`), `createTest(testType, steps, folderPath, jira)`,
+    `addTestsToTestPlan(issueId, testIssueIds)`.
+- Note — what the documentation changed in the technique (v1.2, first): the first chunk of results goes through the
+  **multipart** import, whose `info` part takes Jira fields — the plain import's `info` cannot take the execution's
+  `qa-batch-` label, and without it an execution created by a request that timed out could not be found; the build
+  goes in the execution's summary (and the bugs' description), not in `version`/`revision`; steps are read with
+  `getTests(issueIds)` 100 at a time (not `getTests(jql)`), and the status in the test plan through the Test field
+  `status(testPlan:)` in the same query (not `getTestPlan`); the read back pages `testRuns` and compares defects by
+  key or issue id.
+- Note (choices where the spec was open): modules `api.py` (the calls, both clients, the Xray token, GraphQL with
+  variables, never values in the query), `fields.py`, `adf.py`, `adapter.py`; Xray's `authenticate` is sent as a read
+  (it changes nothing, so it is retried and a dry run has no writing request); the rich text fields of a new test go
+  through `PUT /rest/api/3/issue/{key}` in ADF after `createTest` (the format `createTest`'s `jira` object expects for
+  them is not documented); `ids.yaml` keeps the final ID of an exported case (`DS-140`), not the provisional
+  `NEW-1`, which the next cases file reuses — the record keeps `NEW-1 → DS-140` and the command prints it; the bug's
+  description is the environment and build, role, platform, preconditions, expected, observed and the linked case,
+  then the steps as a list (the project's `description` of the draft, when given, first); a resumed run looks for its
+  marker in the comments of an existing bug before commenting again; the existing bugs' comment carries the marker
+  `qa-batch-<id> · <case>`; `bug_status` already reached is not transitioned again; the transition is chosen by its
+  target status; evidence is attached to the test run only, not to the bug; the case ID resolution uses `key in
+  (...)` / `cf[N] ~ "..."` (exact match checked after) / `labels in (...)` in groups of 50, a JQL 400 there is a
+  conflict (exit 2), and an issue moved to another project is followed through the issue id of the cache; the
+  export's duplicate check is the same summary in the project (not only the folder: a folder needs one more query
+  per case); `bugs.defaults` keys that are model fields fill the draft, other keys are Jira field ids; a
+  `new_defect` on an item that is not sent is not created (listed as not sent). The golden is a runner
+  (`tests/test_jira_golden.py`) over the folders of `tests/golden/jira/` with a shared `project.yaml` (a scenario
+  may have its own) and the `.env` written by the test (never committed); `tests/jira_fake.py` is a stateful fake
+  Jira + Xray (with a small JQL evaluator) for the unit tests and the round trip, where the requests depend on the
+  state. No new dependency.
+- Only the pilot (10.5) can confirm: the Xray `info` part of the multipart import on a real site (label, environments,
+  test plan), the answer of `createTest` (`jira(fields: ["key"])`) and whether its `folderPath` must exist; the JQL
+  error of a key that does not exist (a 400 is assumed); `cf[N] ~` on the project's ID field; the text search of
+  `bug-search`; the Xray status names a real project has (`check` lists them); rate limits and the token's lifetime.
+
+### 10.3 Azure DevOps adapter (`adapters/azure_devops/`) — done 29.09.2026
+- [x] Endpoints confirmed (api-version 7.1) against the current documentation; the technique fixed first (v1.2).
+- [x] `check`; `import-cases` (suites of the plan with `x-ms-continuationtoken`, `workitemsbatch` in groups of 200,
+  steps XML ↔ model, shared steps and parameters flagged, points and latest outcome); `export-cases` (`$Test Case`
+  with steps, added to `new_cases_suite_id`); `apply` (new bugs with `TestedBy` and the result link, one test run
+  per batch, results patched, run completed, `bug_status`, read back; a run left incomplete continued through the
+  record); `bug-search` (WIQL + `workitemsbatch`).
+- [x] JSON Patch with a `test` on `/rev` for existing work items (a concurrent edit is exit 2); HTML fields escaped.
+- [x] Golden `tests/golden/azure_devops/` and the round trip, in the unit tests.
+- Note — endpoints confirmed (29.09.2026), Azure DevOps Services REST API 7.1 on learn.microsoft.com (`https://learn.microsoft.com/en-us/rest/api/azure/devops/<area>/<page>?view=azure-devops-rest-7.1`):
+  - core / processes: `GET _apis/projects/{project}?includeCapabilities=true` (`capabilities.processTemplate`:
+    `templateName`, `templateTypeId`; https://learn.microsoft.com/en-us/rest/api/azure/devops/core/projects/get?view=azure-devops-rest-7.1), `GET _apis/work/processes/{processTypeId}` (`name`,
+    `parentProcessTypeId` for an inherited process; https://learn.microsoft.com/en-us/rest/api/azure/devops/processes/processes/get?view=azure-devops-rest-7.1);
+  - wit: `GET {project}/_apis/wit/workitemtypes`, `GET …/wit/fields` (the field types; https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/fields/list?view=azure-devops-rest-7.1),
+    `GET …/wit/workitemtypes/{type}/fields?$expand=All` (`alwaysRequired`, `defaultValue`, `allowedValues`;
+    https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-item-types-field/list?view=azure-devops-rest-7.1), `POST …/wit/wiql?$top=` (`{query}` → `workItems[{id}]`, no paging;
+    https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/wiql/query-by-wiql?view=azure-devops-rest-7.1), `POST …/wit/workitemsbatch` (at most 200 ids, `fields`, `$expand`, `errorPolicy:
+    Omit`; https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/get-work-items-batch?view=azure-devops-rest-7.1), `POST …/wit/workitems/${type}` and `PATCH
+    …/wit/workitems/{id}` (`application/json-patch+json`, ops `add`/`test`/…, `/relations/-`;
+    https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/work-items/create?view=azure-devops-rest-7.1, …/update), `GET`/`POST …/wit/workItems/{id}/comments` (**`7.1-preview.4`**,
+    `format=html`, body `{text}`, `continuationToken` in the body; https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/comments/add-work-item-comment?view=azure-devops-rest-7.1,
+    …/get-comments);
+  - testplan: `GET …/testplan/plans/{planId}` (https://learn.microsoft.com/en-us/rest/api/azure/devops/testplan/test-plans/get?view=azure-devops-rest-7.1), `GET
+    …/testplan/Plans/{planId}/suites` (`suiteType`, `x-ms-continuationtoken`; https://learn.microsoft.com/en-us/rest/api/azure/devops/testplan/test-suites/get-test-suites-for-plan?view=azure-devops-rest-7.1),
+    `GET …/testplan/configurations` (https://learn.microsoft.com/en-us/rest/api/azure/devops/testplan/configurations/list?view=azure-devops-rest-7.1), `GET`/`POST
+    …/testplan/Plans/{planId}/Suites/{suiteId}/TestCase` (`testIds`; body `[{workItem: {id}}]`, answer with
+    `pointAssignments`; https://learn.microsoft.com/en-us/rest/api/azure/devops/testplan/suite-test-case/get-test-case-list?view=azure-devops-rest-7.1, …/add), `GET
+    …/Suites/{suiteId}/TestPoint?testCaseId=` (`configuration`, `testCaseReference`, `results.outcome`;
+    https://learn.microsoft.com/en-us/rest/api/azure/devops/testplan/test-point/get-points-list?view=azure-devops-rest-7.1);
+  - test: `POST …/test/runs` (`name`, `plan`, `pointIds`, `automated`, `comment`; https://learn.microsoft.com/en-us/rest/api/azure/devops/test/runs/create?view=azure-devops-rest-7.1), `GET
+    …/test/runs?planId=&automated=&includeRunDetails=&$skip=&$top=` (https://learn.microsoft.com/en-us/rest/api/azure/devops/test/runs/list?view=azure-devops-rest-7.1), `PATCH
+    …/test/runs/{runId}` (`state: Completed`; https://learn.microsoft.com/en-us/rest/api/azure/devops/test/runs/update?view=azure-devops-rest-7.1), `GET …/test/Runs/{runId}/results`
+    (`detailsToInclude=WorkItems` gives `associatedBugs`; `$top` at most 1000, 200 with details;
+    https://learn.microsoft.com/en-us/rest/api/azure/devops/test/results/list?view=azure-devops-rest-7.1), `PATCH …/test/Runs/{runId}/results` (`id`, `outcome`, `state`, `comment` ≤ 1000
+    characters, `associatedBugs: [{id}]`; https://learn.microsoft.com/en-us/rest/api/azure/devops/test/results/update?view=azure-devops-rest-7.1), `GET`/`POST
+    …/test/Runs/{runId}/Results/{resultId}/attachments` (`stream`, `fileName`, `attachmentType`;
+    https://learn.microsoft.com/en-us/rest/api/azure/devops/test/attachments/create-test-result-attachment?view=azure-devops-rest-7.1).
+- Note — what the documentation changed in the technique (v1.2, first): the comments API exists only as
+  `7.1-preview.4`; **a bug is linked to a test result through the result's `associatedBugs`** (the documented
+  field of `PATCH …/results`, read back with `detailsToInclude=WorkItems`), not an artifact link written on the bug;
+  **test points are resolved per suite** with `TestPoint?testCaseId=` (the configuration name decides between
+  points, through `results.configurations`); the build goes in the run's name and comment (`build`/`buildReference`
+  are pipeline builds); no dates are sent (a result's completed date must follow its started date; the tracker stamps
+  them, the run log keeps `ts`); a run's tags are 5 alphanumeric names under 30 characters, so the run's marker is its
+  comment; the `bug_status` state change goes right after the new bugs, before the results and comments add
+  revisions to the bug (its `test` on `/rev` uses the revision read at the resolution).
+- Note (choices where the spec was open; mirroring 10.2 unless Azure DevOps makes it wrong): modules `api.py`,
+  `fields.py`, `html.py`, `steps.py`, `adapter.py`; the shared `significant_words`/`fill_template` moved from the Jira
+  back-end to `adapters/tracker/base.py` (reuse, methodology §14.1); the PAT as basic authentication with an empty user
+  (the base64 also redacted); `check` refuses Basic (the technique's message) and reports CMMI (or any other base) as
+  not covered, both exit 4, and follows an inherited process to its parent; `check` also requires `bugs.states` and
+  `bugs.closed_states` to be states of the bug type (Scrum has no `Closed`: the default would silently count Done bugs
+  as open); the marker search of a test run happens only when a record exists without a run (one list of the plan's
+  runs), the marker search of bugs/cases always before a create (one WIQL); a `new_defect` area must be a full path
+  of the project (refused, never guessed); evidence on the test result only, text files redacted, a resumed send
+  lists the result's attachments first; comments carry the marker `qa-batch-<id> · <case>` and are looked up before
+  commenting again (as in Jira); `bug_status` already reached is not sent again, a state outside the type's states
+  is exit 2; `ids.yaml` keeps `{id, points: {configuration: point}}` with the final ID; results in chunks of 100,
+  recorded per chunk; `update_results`/`update_run` retried as idempotent writes, the work item PATCH and every POST
+  never retried blindly; `import-cases --query` flags cases with no test point; `export-cases` refuses a same-title
+  `Test Case` anywhere in the project and, when resumed, asks the suite which cases it already has. The golden runner
+  (`tests/test_azure_devops_golden.py`) and the stateful fake (`tests/ado_fake.py`, with a small WIQL evaluator and
+  continuation tokens) follow 10.2's. No new dependency. With both back-ends built, the "no adapter yet" warning left
+  `validate_project.py` (`config.IMPLEMENTED` has both; a missing section is a problem for both).
+- Only the pilot (10.5) can confirm: that `associatedBugs` in a results PATCH shows the link on the bug (and whether
+  it adds a revision); that `TestPoint?testCaseId=` takes a comma-separated list; the answer to a failed `test` on
+  `/rev` (412 assumed, exit 2) and to a JSON Patch on a field the type does not have; `CONTAINS WORDS` with several
+  words; the WIQL of `System.Tags CONTAINS` on a tag with `-`/`_`; whether a run created with `pointIds` needs a
+  state; the Test Plans licence of the pilot's user; the comments preview version still accepted; rate limits.
+
+### 10.4 Skills — done 29.09.2026
+- [x] `/project-onboarding`: with `jira`/`azure-devops`, fill in the tracker's section with the user (IDs, fields,
+  status/outcome map — `Blocked` and `N/A` asked, never assumed), the credential variables in `.env`, then `check`
+  and `import-cases` (methodology §4 step 7), and the technique imported in the workspace's `CLAUDE.md`.
+- [x] `/checkpoint`: step 7a replaced by the adapter: `apply` without `--yes`, the plan shown, `--yes` only after the
+  user's approval, the exit codes explained as in step 7; commit the record after exit 0 (as the workbook).
+- [x] `/log-bug`: `bug-search` before drafting; the draft goes in the run log as `new_defect` (or `bug` +
+  `bug_status`), as with Excel.
+- [x] `/generate-cases`: the approved cases written to a cases file and sent with `export-cases` (dry run, approval,
+  `--yes`); the final IDs told to the user.
+- [x] `/plan-batch` and `/run-batch`: cases from `tracker/cases.json` (refreshed with `import-cases` when older than
+  the session), statuses from the tracker's map, the `run` block written in the run log.
+- [x] `/end-session`: totals from the run logs and the read back, not from memory. `/dashboard`: unchanged (Excel
+  only), its message points to the tracker's own reports.
+- [x] README (trackers) aligned.
+- [x] `sync_skills.py --apply` and the global copy in sync: after the branch is merged (the global copy is what every
+  workspace loads, so it is not synced from an unmerged branch). Done 29.09.2026 after the merge (9 skills applied).
+- Note (choices where the plan was open): the skills never branch on the tracker's name beyond "with jira or
+  azure-devops" (one command line, the tracker from `project.yaml`), and they point to the techniques instead of
+  repeating them; `/project-onboarding` gets a step 4t (the section, filled from the template's comments, the
+  process asked first for Azure DevOps and Basic/CMMI stopped there) and a step 8d (`check`, then `import-cases`,
+  only after the user has put the values in `.env`; `tracker/` committed); `/checkpoint` 7a commits `tracker/`
+  after any `--yes` run that wrote (0, 3 or 5, not only 0: a partial record must reach another computer too), a
+  run after exit 3 repeats the same `--yes` command under the same approval (it continues from the record), and a
+  missing `run` block is asked (the build is never guessed); `/log-bug` writes the draft to
+  `tracker/drafts/<case>.json` and never skips the search silently when the tracker is out of reach;
+  `/generate-cases` writes the approved cases to `tracker/export/cases_<YYYYMMDD>_<nn>.json` (one file per export: its name is
+  the record's, so a file already exported is never edited); `/plan-batch` refreshes `tracker/cases.json` when its
+  `imported_at` is older than the session; `/end-session`'s cross-check runs `apply` without `--yes` on each batch
+  (a complete record answers "already sent" with no request and no credential); `/dashboard` stops with the reason
+  (decision of 10.0) and points to the tracker's reports and `/end-session`; `/test-api` reads its cases from
+  `tracker/cases.json` too, `/audit-accessibility` and `/test-mobile` needed no change (they only write the run log
+  and continue to `/checkpoint`). `tests/test_skills.py` checks that every `python -m adapters.tracker` line of the
+  skills parses with the real command line, that each direction is used by its skill, that the writing commands are
+  never written with `--yes` in the skill, that `/checkpoint` explains the exit codes 0–5, what the onboarding asks,
+  `/dashboard`'s message, and that every technique a skill names exists. `examples/demo/` unchanged (Excel).
+
+### 10.5 Pilot on free instances (user) and heuristics — postponed (user, 29.09.2026); at the end of the project (user, 12.10.2026)
+*User decision (29.09.2026): no pilot now; the adapters stay available for when a project uses Jira or Azure DevOps.
+Until then they are validated only against the fakes and the fictional goldens (methodology §15), never against a real
+site. The first real project runs this checklist in its own workspace before its first `--yes`: `check`,
+`import-cases` and the `apply` dry run with `--record`, and the points each technique lists as "only the pilot can
+confirm" (notes of 10.2 and 10.3).*
+
+- [ ] The user creates a free Jira Cloud site with an Xray trial and a free Azure DevOps organisation, each with a
+  practice project, and a practice workspace per tracker in `qa-workspaces/` (outside this repository).
+- [ ] In each: onboarding, `import-cases`, one batch with a Pass, a Fail with a new bug, a Fail linked to an existing
+  bug, a `Blocked` and an `N/A`; the dry run approved, sent, sent again (nothing changes), read back; one new case
+  exported; `--record` on, so the workspace can keep a real golden later (methodology §15). Notes in those
+  workspaces' `context.md`, not here.
+- [ ] `docs/heuristics.md` gets the anonymised patterns found (methodology §17); what the pilot shows about the APIs
+  goes into the techniques first, then the code.
+
+Acceptance of the phase: a Jira + Xray project and an Azure DevOps project can be onboarded from their tracker, have
+batches planned from imported cases, send results and bugs at `/checkpoint` with approval and without duplicates,
+export new cases, and be continued on another computer; the unit tests and both goldens pass (methodology §15).
+
+### 10.6 Adding approved cases to an Excel workbook — done 04.10.2026
+Found on the practice workspace: `/generate-cases` says approved cases "go into the workbook/tracker", and the Jira
+and Azure DevOps adapters have `export-cases`, but the Excel adapter has no way to add a case: `apply` only changes
+cases that already exist (it refuses an unknown case ID). The approved case (a keyboard-focus case, WCAG 2.4.7) was
+added by hand in a copy of the workbook, with the previous row's style, and only copied over the official one after
+recalculating, `cross_check()` with no problems and `check_summary()` matching; the workspace's `CLAUDE.md` records
+that procedure. A workspace's old rule "never edit the workbook by hand, rebuild it with the demo's
+`rebuild_workbook.py`" no longer holds since 8.11 (that script builds the demo's English workbook and applies the
+demo's batches), which is worth a check in `scripts/migrate_workspace.py` or `validate_project.py`.
+- [x] Specified first (methodology §15): `technique-excel.md` v1.3 §4.1, methodology v2.4 (§4.2 and §5.3: approved
+  cases enter through the adapter, never by hand), the template's `excel.cases.fields` / `new_status`.
+- [x] `python -m adapters.excel.add_cases <workspace> <cases.json> [--dry-run]` (`validate_cases()`, `plan_cases()`,
+  `add_cases()` in `adapters/excel/base.py`): `{"cases": [...]}` with the model's fields and the final IDs in the
+  project's pattern; the sheet by the ID prefix; refused whole for an ID that exists, an ID without a prefix, a
+  candidate duplicate (same title, ignoring case and spaces, in the sheet or the file), a missing title or bad
+  steps; each case after the last case of its sheet with the previous row's style, its formulas translated and its
+  data validations extended (no row height); recorded in the control sheet like a batch (the same file again
+  changes nothing, the same name with another content refused); then save-if-clean, recalculation and summary check
+  (exit codes as `apply`).
+- [x] `/generate-cases` step 10 for the excel tracker (dry run first, exit codes, never by hand).
+- [x] `validate_project.py` warns when a workspace's `CLAUDE.md` still mentions `rebuild_workbook.py` without a
+  script of its own (the demo has one).
+- [x] Tests: `tests/test_add_cases.py` (30), plus one in `tests/test_skills.py` and one in
+  `tests/test_validate_project.py` (634 → 666 with the earlier ones); the fictional golden unchanged; an end-to-end
+  run on the fixture with LibreOffice (recalculation OK, the summary matches, a second run changes nothing).
+- Note: `cases.fields.title` is required only for `add-cases` (the other commands load without `fields`), since it
+  is how duplicates are found. Conditional formatting is not extended (a range that does not reach the new row
+  keeps its range); revisit only if a real workbook needs it.
+
+---
+
+## Phase 11 — Remote execution (GitHub Actions)
+
+Why: the first real mobile project run with the framework (29.09.2026) tied everything to one computer. The emulator
+lived on it (and when it closed, it came back from a stale snapshot with the old build, so the build had to be
+reinstalled and the login redone); the build arrived in the Downloads folder; the login was a one-time magic link the
+user pasted into the session; `.env` was local; and the agent drove the device from a local session. The workspace was
+already a git repository with a private remote (phase 9), so the project's *state* was portable, but its *execution*
+was not. This phase makes the execution remote: the tests run on a GitHub Actions runner started from the workspace's
+own repository, and what they produce comes back to that repository as a pull request. Everything stays universal: the
+workflow, the scripts and the prompts live in `qa-assistant` as templates; no app, account, URL or text of the project
+enters this repository (methodology §1.2); the examples use the Demo Shop.
+
+Decisions of the user (29.09.2026):
+- **Device:** an Android emulator on a GitHub-hosted Linux runner (KVM), started by a workflow in the **workspace's**
+  repository. No third-party device farm (the build would leave the client's control).
+- **Who drives the conversational tests:** Claude Code **headless** in that runner (the same skills and
+  `scripts/device.py` as a local session), authenticated with the user's **Claude subscription** (an OAuth token from
+  `claude setup-token`, stored as the secret `CLAUDE_CODE_OAUTH_TOKEN`), never a paid API key. It opens a **pull
+  request** with the run log and the evidence; bugs are proposals until the user approves them (methodology §9.4).
+- **No cost (user, 29.09.2026):** only what is free is used — GitHub Actions within the free minutes of the plan, with
+  the spending limit at 0 so a job stops instead of being billed; releases, issues, pull requests and the Actions cache;
+  the Claude subscription the user already has (its usage limits apply; no extra billing). Nothing that needs a paid
+  service, a paid API key or a device farm.
+- **Builds:** each build is a **release of the workspace's repository** (tag and asset), recorded in `project.yaml`
+  with its SHA-256; the workflow downloads it by tag.
+- **Login:** stays **manual** — the runner asks for the link in the app and waits for the user to paste it as a comment
+  on an issue of the private repository; the link is opened on the emulator and the comment is deleted.
+
+Constraints written down now:
+- The runner starts clean every time: every run needs the build installed and a login. Nothing of the app's state is
+  kept between runs unless 11.6 proves a cache works.
+- Secrets live only in the repository's **Actions secrets** (never in files, logs, inputs or the PR): the Claude OAuth
+  token, the credential variables of `project.yaml` (e.g. the test account's e-mail) and a read-only token to clone the
+  private `qa-assistant`. The workflow writes `.env` from them inside the runner and it is never committed.
+- Free minutes are limited (a private repository on the Free plan: 2 000 Linux minutes a month, shared by all the
+  user's private repositories). Every run has a time limit and a turn limit, both in `project.yaml`; the PR says how
+  long the run took; `workspace_ci.py check` warns when the account's Actions spending limit is not 0 (when `gh` can
+  read it) and says the minutes used this month when the API gives them. The workflow never uses a larger (paid)
+  runner.
+- Deterministic Maestro flows (N2) can run in the same workflow without the agent; the agent is only for the
+  conversational mode.
+
+### 11.0 Specification first (methodology §15) — done 29.09.2026
+- [x] Methodology: §12 (continuity) — a run can happen in the workspace's CI; §12.3 gets "resume on a runner" next to
+  "resume on another computer"; §9.4 — in a remote run the approval of new bugs happens in the pull request (an edit of
+  the run log before the merge), and a run log sent by the runner never has a `new_defect` applied before that;
+  §14.2 — the runner is an environment of its own (tools, limits, what it cannot do).
+- [x] `technique-mobile.md`: a section **Remote execution** — the workflow's steps, the manual login through an issue
+  comment, what changes in conversational mode on a runner (no screen for the user; the evidence is the only view), the
+  known limits of emulators on runners (ARM translation, `extractNativeLibs=false` handled by `setup_emulator.py`, GPU
+  mode `swiftshader_indirect`, cold boot), and how long a batch may take.
+- [x] `docs/workspace/ci/` holds the templates (workflow, the agent's prompt, the PR body) and a `README` with the
+  repository settings: secrets, Actions permissions (`contents: write`, `pull-requests: write`, `issues: write`), the
+  token to clone `qa-assistant`, the Claude OAuth token (`claude setup-token`), the spending limit at 0 and the free minutes.
+- [x] `project.yaml`: a `ci:` section (optional) — `runner` (default `ubuntu-24.04`), `timeout_minutes`, `max_turns`,
+  `secrets` (names of the `.env` variables the runner needs), `login.mode` (`manual-issue` or `none`), `login.flow`,
+  `login.timeout_minutes`; `validate_project.py` checks it; the template gets it commented.
+- Note (where the spec was open): methodology v2.3 — §9.4 (the approval in the pull request, `"proposed": true`
+  refused by every adapter), §12.1 (a run can happen in the CI), a new §12.4 "Resuming on a runner" next to §12.3,
+  §14.2 (the runner as an environment) and a migration note; `technique-mobile.md` v1.3 §11 (steps, login through an
+  issue, conversational mode on a runner, review and apply, the `ci:` keys, limits and times). `docs/workspace/ci/README.md`
+  holds the settings and the no-cost rules; the templates it lists arrive with 11.4–11.6. Keys added to the plan's
+  list, all optional: `ci.login.hosts` (a login link's host may be an auth provider's, not an environment's),
+  `ci.login.user` (who may paste it; default the repository's owner, which is an organisation for an organisation's
+  repository) and `ci.login.screen_text` (to check the app left the login screen). `validate_project.py`: the runner
+  only `ubuntu-latest` or `ubuntu-NN.04` (any other label is a larger — paid — or self-hosted runner), 1–360 minutes,
+  `ci.secrets` names of variables of `project.yaml` (a warning otherwise; a problem for the workflow's own secrets,
+  e.g. `CLAUDE_CODE_OAUTH_TOKEN`), the helper flow's name starting with `_`, the login's wait shorter than the job;
+  `mobile.build.version` (written by 11.1) a text.
+
+### 11.1 Builds as releases (`scripts/workspace_build.py`) — done 29.09.2026
+- [x] `publish <apk> [--yes]`: reads the package, `versionName` and `versionCode` from the APK's binary manifest in
+  pure Python (no `aapt2`), computes the SHA-256, and without `--yes` prints what it would do; with `--yes` creates the
+  release `build-<versionName>-<versionCode>` in the workspace's repository (`gh release create`, the APK as asset),
+  updates `mobile.build` (`source: release <tag>`, `sha256`, `version`) and commits. Refuses a package different from
+  `mobile.app_id`, a production build (the rule of `setup_emulator.py`), a public repository, and a tag that exists
+  with another hash.
+- [x] `fetch [--tag T] [--dest D]`: downloads the release's asset and checks the SHA-256 against `project.yaml`
+  (default: the tag of `mobile.build`); exit codes documented.
+- [x] `setup_emulator.py` uses the same manifest reader: it no longer reinstalls when the installed `versionCode` is
+  already the build's (today, without `aapt2`, it reinstalls every run and the login is lost); and it boots **cold**
+  (`-no-snapshot-load`) when the saved snapshot is older than the installed build — the stale-snapshot trap of the
+  pilot.
+- [x] Tests: the manifest reader against APKs built in the test (as in 9.2), `publish` / `fetch` with a fake `gh`.
+- Note (where the spec was open): the reader is its own module, `scripts/apk_manifest.py` (string pool UTF-8 and
+  UTF-16 with 1- and 2-unit lengths, the resource-id map for attribute names stripped from the pool, int as decimal or
+  hex, `uses-sdk` for min/target SDK); `setup_emulator.py` falls back to `aapt2` only when the manifest cannot be read.
+  The SHA-256 of a release lives in its notes (`sha256: <hex>`): that is how `publish` tells "the same build again"
+  (nothing created, `project.yaml` still brought up to date) from "another build under the same tag" (refused) without
+  downloading it, and how `fetch --tag <other>` checks a build that is not `mobile.build`. `mobile.build` is rewritten
+  as one line `{source: "release <tag>", sha256, version: "<name> (<code>)"}` by a text edit of that key only (the
+  file's comments stay), read back and restored if it does not parse to the same values; the commit touches only
+  `project.yaml` and is never pushed. An INTERNAL repository is refused like a public one; an unconfirmed visibility
+  needs `--i-confirm-private` (as `workspace_git.py push`). A production build is looked for in the file name and the
+  versionName. `fetch` renames the asset to `app/<tag>.apk` (in the template's `.gitignore`), keeps nothing when the
+  hash differs, and writes `apk=`/`tag=` to `$GITHUB_OUTPUT` on a runner; the repository is `$GITHUB_REPOSITORY`
+  there, the origin elsewhere. The cold-boot rule: the snapshot folder `snapshots/default_boot` of the AVD older than
+  the `--apk` file or than `qa-build.txt`, which the script writes in the AVD's folder after each install (the only
+  reliable "installed build" time it has); plus `--cold`, `--gpu MODE` and `--headless` (`-no-window`) for the runner.
+  Fixture APKs now have a real binary manifest (`tests/apk_kit.py`, shared by both test modules). Not run against a
+  real APK nor emulator here (the reader's format was confirmed on a real React Native APK in the pilot).
+
+### 11.2 Device driver, helper flows and the run log (lessons of the pilot) — done 29.09.2026
+- [x] `device.py type --file <utf8.txt>` (text from a UTF-8 file: on Windows, an emoji passed as an argument arrives as
+  `????`), and ASCII text longer than ~400 characters typed through `adb` in chunks (a single `adb shell input text`
+  was cut at ~430 characters); when Maestro's keyboard is not active ("Maestro IME is not active"), retry once, then
+  fall back to chunked `adb` for ASCII and say so.
+- [x] Helper flows: `run_mobile.py --helper flows/_<name>.yaml` runs a flow that is not a case (e.g. asking for the
+  login link) with the `MAESTRO_<VAR>` values from `.env`, output redacted, no result recorded — instead of a script
+  in the session's scratchpad.
+- [x] `scripts/run_log.py add <batch> <case> <status> <actual> [--bug ID]` — appends or replaces a result in
+  `runs/batch_<batch>.json`; refuses to touch a batch already applied (the adapter's control sheet), pointing to a new
+  batch name (a correction the pilot had to do by hand).
+- [x] `/log-bug` (retest): a retest records the bug's state, and changes the linked case only when the case's own
+  expected result was checked again (the pilot turned six Pass cases into Fail by linking maintained bugs to them).
+- [x] Tests with the fake `adb`/Maestro of 9.1.
+- Note (where the spec was open): Maestro now gets the text inside its UTF-8 flow file (one `inputText` step per
+  300 characters, a JSON-quoted scalar) instead of `-e MSG=…` on its command line — the pilot's `????` came from a
+  command-line argument, and the file route is the one that worked; a chunk containing `${` (Maestro would evaluate
+  it) goes through an environment variable `MAESTRO_QA_TEXT_<n>` instead, never the command line. ASCII text never
+  goes through Maestro unless `type --via maestro` (for a field that ignores `input text`), so the "fall back to
+  chunked adb for ASCII" happens on that route; non-ASCII text after two "IME is not active" is exit 3. `--file`
+  drops one final line break and is also accepted by `send`; the `.env` values are still refused in it.
+  `device.open_link()` split out of `link` for 11.3 (in-process, the URL on no command line of this computer).
+  `run_mobile.py --helper`: the flow's name must start with `_` and must not start with a case ID (the other way
+  round, a `_` flow given as a case is refused with a hint), on `--serial` / `mobile.serial`; the same function
+  (`run_helper`) is what 11.3 calls. `run_log.py`: the status is checked against the project's vocabulary (or
+  `Question`), a correction's name is `<batch>_02`, `_03`… (the first one neither in `runs/` nor applied); for Excel
+  an unreadable workbook is a warning (the check cannot be made), never a silent pass. The retest rule is also one
+  sentence of methodology §9.3 (method, not only the skill); `/test-mobile` points to `send --file`, the helper flow
+  and `run_log.py`.
+
+### 11.3 Manual login through an issue (`scripts/remote_login.py`) — done 29.09.2026
+- [x] `request`: runs the workspace's helper flow that asks for the link (`ci.login.flow`), then opens or reuses an
+  issue "Login needed — <run id>" in the workspace's repository, mentioning the owner, with what to paste and the time
+  limit. `wait`: polls the issue's comments (every 15 s, up to `login.timeout_minutes`) for a comment **from the
+  repository owner** with a URL of a host of `project.yaml`; masks it (`::add-mask::`), opens it with `device.py link`,
+  deletes the comment, closes the issue, and checks that the app left the login screen. Timeout → exit 3 and the batch
+  is `Blocked` (login), not failed.
+- [x] The URL never reaches a file, a log line or the PR; a comment from anyone else is ignored and reported.
+- [x] Tests with a fake GitHub API (owner vs other author, wrong host, timeout, deletion).
+- Note (where the spec was open): the GitHub API through `gh api` (one function, `gh_api`, which the tests replace
+  with a stateful fake GitHub); the run id is `$GITHUB_RUN_ID` (or `--run-id`, or `local-<date>` off a runner). The
+  allowed user is `ci.login.user`, default the repository's owner (the first part of the slug). A host is allowed
+  when it is a host of `environments` or `ci.login.hosts`, or a subdomain of one (`login.shop.demo` for
+  `shop.demo`; `shop.demo.evil.example` and `evilshop.demo` are not); an e-mail client's redirect wrapper counts by
+  its target (`device.unwrap`). Bots' comments (the runner's own) are skipped silently; another user's comment is
+  reported once per user, never with its text, and left in place; the owner's comment without an allowed link is
+  reported and left. The comment with the link is deleted even when opening it fails (then the issue is closed
+  saying so, exit 3). `::add-mask::` is printed only on a runner (`GITHUB_ACTIONS=true`), before anything else can
+  print the URL; off a runner the URL is never printed at all. The login screen check needs `ci.login.screen_text`
+  (without it: "not checked"), polls the dump for 60 s and tolerates the browser in front while it hands the link
+  to the app. The issue's body names the hosts and the time limit and says "as text" and "do not open it first".
+
+### 11.4 The workflow (`docs/workspace/ci/mobile.yml`) — done 29.09.2026
+- [x] `workflow_dispatch` inputs: `batch` (a planned batch name or a list of case IDs), `build` (release tag; default
+  `mobile.build`), `mode` (`conversational` | `flows` | `both`).
+- [x] Steps: checkout the workspace; checkout `qa-assistant` with the read-only token; Python, Java, Node, Maestro,
+  Android SDK (cached); enable KVM; `.env` from the secrets listed in `ci.secrets`; `validate_project.py --environment
+  --strict`; `workspace_build.py fetch`; `setup_emulator.py` (cold boot, GPU `swiftshader_indirect`);
+  `remote_login.py request` + `wait` (when `login.mode: manual-issue`); flows (`run_mobile.py`) and/or the agent
+  (11.5); commit `runs/`, `evidence/` and `context.md` to a branch `run/<batch>-<run id>` and open the PR (11.6).
+- [x] `scripts/workspace_ci.py install [--yes]` copies the workflows and the prompt into `.github/` of the workspace
+  (nothing of the project in them: they read `project.yaml`), lists the secrets to create (`gh secret set`, run only
+  with `--yes`, values typed by the user, never passed on the command line) and checks the repository is private.
+- [x] `workspace_ci.py check` validates the installed workflow against the workspace (every secret name in
+  `ci.secrets`, the batch exists, the flows folder exists) — a dry run without `act`.
+- Note (where the spec was open): the workflow has two jobs: `plan` (a sparse checkout of `project.yaml` and `yq`,
+  preinstalled on the runner) reads `ci.runner` / `ci.timeout_minutes` and refuses any label that is not
+  `ubuntu-latest` / `ubuntu-NN.04` — the only way `runs-on` and `timeout-minutes` can come from `project.yaml`; it
+  costs one rounded-up minute — and `run`. The workspace is checked out in `ws/`, `qa-assistant` in `qa/` (the
+  repository and ref from the variables `QA_ASSISTANT_REPOSITORY` / `QA_ASSISTANT_REF`, never written in the
+  template). Node is not installed: Maestro needs Java 17 and Claude Code has a native installer (11.5). The Android
+  SDK is the runner's own (`$ANDROID_HOME`), plus `sdkmanager` for the emulator and `mobile.image`; the image, the
+  emulator and `~/.maestro` are cached (`actions/cache`, key by image and `MAESTRO_VERSION`). Workflow inputs reach
+  the scripts only through `env:` (never `${{ }}` inside a script: no injection). `.env` is written by
+  `workspace_ci.py write-env` from `toJSON(secrets)` (masked by Actions), with only the names of `ci.secrets`, and
+  refused when `.env` is not ignored; `validate_project.py --environment --strict --ci` then needs only those names
+  (a new `--ci` option). A planned batch is `batches/<name>.yaml` (`cases: [...]`, written by `/plan-batch`, new
+  step 10), otherwise the input is case IDs (name `adhoc`); the run log is `runs/batch_<name>_r<run id>.json`
+  (created with the `run` block: environment `test` or the first key, build `mobile.build.version`), the branch
+  `run/<name>-<run id>`. Mode `flows` runs the cases that have a flow, `both` gives the others to the agent,
+  `conversational` gives all to the agent. A failed login makes every case Blocked (login) (`blocked`) and skips the
+  batch. Flow results go into the run log (`import-flows`). The pull request step commits only `runs/`, `evidence/`
+  and `context.md`; its body and the checks before it come in 11.5 and 11.6. `install --yes` runs
+  `gh secret set NAME` with the terminal attached (gh asks for the value) and only prints the commands when there is
+  no terminal (e.g. inside Claude Code); it commits nothing. `check`'s billing: the minutes from
+  `/users/<owner>/settings/billing/usage/summary?product=actions` (a warning when `netAmount` > 0); the spending
+  limit only through the organisations' budgets API (GitHub has no budgets API for a user account: then it says to
+  check it by hand). Not run on GitHub here: the workflow is checked by its tests (shape, standard runners only, only
+  the two workflow secrets, nothing of a project, every script and subcommand it calls exists).
+
+### 11.5 The agent on the runner — done 29.09.2026
+- [x] Claude Code headless (`claude -p` with the prompt template; tools limited to Bash for the framework's scripts,
+  Read, and Write/Edit only inside `runs/`, `evidence/` and `context.md`; no web tools), with `ci.max_turns` and the
+  workflow's timeout. The prompt: read the workspace's `CLAUDE.md` and `context.md`, run the batch with `/test-mobile`
+  in conversational mode, write the run log, **never apply** it (no `adapters.excel.apply`, no tracker `--yes`), put
+  every new bug as `new_defect` with `"proposed": true`, and finish with a summary file for the PR.
+- [x] Checks after the agent: the run log is valid (`validate_batch` without applying), no `.env` value appears in any
+  file to be committed (the redaction of `common.py`), evidence only from the app in the foreground (already the
+  driver's rule).
+- Note (where the spec was open): confirmed against the official documentation (code.claude.com, 29.09.2026) before
+  writing the step: `claude -p` runs headless and exits non-zero on failure; `--max-turns` (print mode) ends the run
+  with an error at the limit; `--allowedTools` takes permission rules (`Bash(python <path> *)`, a trailing ` *` for
+  a prefix; `Write(runs/**)` relative to the working folder); `--disallowedTools "WebFetch,WebSearch"` removes the
+  web tools; `--permission-mode dontAsk` denies anything not allowed (nobody can answer a prompt); `--add-dir` gives
+  file access to `qa-assistant`; `--output-format json` gives `num_turns`, `duration_ms` and `result`; a `/skill`
+  at the start of the prompt is expanded in `-p`; SIGTERM leaves the turn unfinished, so the time limit sends
+  SIGINT (`timeout -s INT`, `-k 60`); `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`, valid one year, needs a
+  Pro/Max/Team/Enterprise plan) authenticates with the subscription — and `--bare` does NOT read it, so the runner
+  does not use `--bare` (the skills and the workspace's `CLAUDE.md` load as in a local session, from
+  `sync_skills.py --apply`). The step runs the CLI (native installer, `curl -fsSL https://claude.ai/install.sh |
+  bash`) rather than `anthropics/claude-code-action@v1`: its inputs `claude_code_oauth_token`, `prompt` and
+  `claude_args` (where `--max-turns` / `--allowedTools` go) were confirmed too, but the action is built around the
+  Claude GitHub App and comments on issues/PRs, and this step only needs the CLI in a known folder with a hard
+  time limit; switching is one step if the pilot prefers it. The agent's time is what is left of
+  `ci.timeout_minutes` minus 5 minutes for the checks and the pull request. The prompt is a template installed with
+  the workflows (`.github/qa/agent-prompt.md`, placeholders `{{workspace}}`, `{{qa}}`, `{{run_log}}`, `{{cases}}`,
+  `{{max_turns}}`; an unknown one left is refused) and starts with `/test-mobile`. Results are written case by case
+  with `run_log.py` (a timeout keeps them); a new bug is added by editing the item (the agent can write only
+  `runs/`, `evidence/` and `context.md`); the summary for the pull request is `runs/<run log>.summary.md`.
+  `post-check` scans every file the workflow would commit (runs/, evidence/, context.md) for each `.env` value of
+  4+ characters as UTF-8, UTF-16 and JSON-escaped bytes (a PNG can hold text), reports the variable's name, never
+  the value, and sets `safe=false` so the pull request step does not run; it adds a missing `"proposed": true`
+  (the rule is enforced, not only asked for); the adapter's validation (Excel `validate_batch`, the tracker's
+  `validate_batch`) runs with `Question` items and the `"proposed"` key aside, and its problems go to the pull
+  request, not blocking it.
+
+### 11.6 Review and apply — done 29.09.2026 (the optional cache left to the pilot)
+- [x] The PR body (template): the build, the batch, Pass/Fail/N/A/Blocked, the proposed bugs (title, case, expected →
+  observed, evidence links), the questions (`Question` cases), the time and turns used.
+- [x] Approval: the user edits the run log in the PR (removes or changes a proposed bug, drops `"proposed"`, answers a
+  `Question`), then merges. A second workflow (`apply.yml`, on push to `main` touching `runs/`) applies each new run
+  log with the project's adapter (Excel: LibreOffice installed in the runner for the recalculation; Jira/Azure DevOps:
+  `apply --yes`, since the merge was the approval), commits the workbook / `tracker/` and comments the result on the
+  PR. A run log with `"proposed"` or `Question` left is never applied (the workflow fails and says which).
+- [ ] Optional, measured in the pilot: cache the AVD with the app logged in between runs (`actions/cache`), to skip
+  the login; kept only if a restored emulator keeps the session and the build.
+- Note (where the spec was open): the adapter-side check is in both adapters' `validate_batch` (Excel and the tracker
+  base): a `new_defect` whose `"proposed"` is anything but `false` refuses the whole batch (exit 4) before anything
+  is written or sent, so a proposal can never be applied locally either; `"proposed": false` counts as approved;
+  `technique-excel.md` §4 and `technique-jira-xray.md` §2.6 say so. The PR body is a template installed with the
+  workflows (`.github/qa/pr-body.md`), filled by `workspace_ci.py pr-body`: a count per status as the run log has
+  them (no assumption about the project's vocabulary) plus the cases not run, the proposed bugs with links to their
+  evidence in the run's branch, the questions, the checks of 11.5, the agent's summary file, the time used against
+  `ci.timeout_minutes` and the turns against `ci.max_turns` (with Claude's `subtype`, e.g. `error_max_turns`).
+  `apply.yml` runs on a push to `main` touching `runs/**`, one at a time (`concurrency`); `apply-merged` takes the
+  run logs added or changed between the push's `before` and `after` (the commit itself on a first push), refuses
+  and names those with `"proposed"` or `Question` left, applies the others with the same command as `/checkpoint`
+  (the Jira / Azure DevOps credentials come from `ci.secrets` through `write-env`), commits the workbook only after
+  exit 0 or 5 (a cross-check or recalculation failure leaves `main` untouched) and `tracker/` always (the record lets
+  a partial send continue), pushes to `main` with the workflow's token (a push by that token starts no workflow: no
+  loop), comments on the pull request of the merge commit, and fails when anything was refused or failed.
+  `/checkpoint` step 9: a remote run's log is never applied locally. The optional box (cache the AVD with the app
+  logged in) is left open: it can only be measured on a real run (11.7).
+
+### 11.7 A real device without a SIM: the companion driver and the pilot — done 12.10.2026
+*User decision (12.10.2026): the pilot of this phase runs **locally**, on the user's own Android phone connected to
+this computer by USB, in the real mobile workspace — not on a runner (that pilot is 11.8, still postponed). The phone
+has no SIM card, and its vendor build (Xiaomi HyperOS 1.0, Android 13) only enables "USB debugging (Security
+settings)" with a SIM: without it `adb shell input` is refused (`SecurityException: INJECT_EVENTS`), and so are
+`adb install` (`INSTALL_FAILED_USER_RESTRICTED`), `settings put`, `ime` and `pm grant`. Maestro, scrcpy and
+UiAutomator need the same option. Screen reading (`uiautomator dump`, `screencap`), `am start`, `am broadcast` and
+`content call` work. In the first real project this made the device runs "assisted" (the person tapped). The user
+chose (12.10.2026) a companion app over borrowing a SIM, and authorised building and installing it on the phone.*
+
+Diagnosis and proof of concept (12.10.2026, on that phone): an APK of 12 KB built without Gradle (aapt2, javac,
+d8, zipalign, apksigner of build-tools 35.0.0), copied to the phone's Download folder and installed **by the user** from
+the file manager; "Allow restricted settings" (Android 13) and the accessibility service turned on by the user. Through
+`adb shell content call --uri content://io.qaassistant.driver --method <m> --arg <a>`: `ping`, `tap` (search box
+focused, keyboard opened), `text` (`Acessibilidade ção ✓` set exactly, which `input text` cannot), `swipe` (list
+scrolled) and `back` — all `ok=true`. The device's shell splits `--arg` on spaces: arguments go comma-separated.
+
+Design:
+- **The driver** (`tools/android-driver/`, package `io.qaassistant.driver`, plain framework Java, no libraries): an
+  `AccessibilityService` (`canPerformGestures`) and a `ContentProvider` whose `call()` is the only door. Methods:
+  `ping` (service state and the driver's version), `tap x,y`, `longpress x,y,ms`, `swipe x1,y1,x2,y2,ms`, `back`,
+  `home`, `text <base64 UTF-8>` (`ACTION_SET_TEXT` on the focused input field: the whole text in one call, any
+  Unicode), `enter` (`ACTION_IME_ENTER` on the focused field). The result is a Bundle `ok` / `error`, printed by
+  `content call`. Gestures wait for their callback (bounded), so a command returns after it happened.
+- **Security:** `call()` refuses any caller other than the adb shell (uid 2000) or root (`SecurityException`), so
+  another app on the phone cannot drive it; no `INTERNET` permission, no activity, no storage, nothing done on its
+  own; the service is off until the person turns it on in the phone's settings, and can be turned off or the app
+  uninstalled at any time. The signing key is generated on the first build **outside the repository**
+  (`~/.qa-assistant/android-driver.jks`, password in the same folder) and never committed; the APK is built locally,
+  never published.
+- **Build:** `python scripts/build_driver.py [--out DIR]` — the Android SDK from `ANDROID_HOME` / the default folder,
+  build-tools and a platform (the newest installed; the command to install them printed when missing), a JDK 17+;
+  output `tools/android-driver/build/qa-driver.apk` (ignored by git); prints the SHA-256. With `--push` copies it to
+  the device's `Download/` (`adb install` is tried first and, when the device refuses it, the person installs it).
+- **`device.py`:** `mobile.input: adb | driver` in `project.yaml` (default `adb`; `--input` overrides). With
+  `driver`, `tap` and the typing go through the driver (`type`/`send` set the text in one call — no chunks, no Maestro,
+  no IME — then the send control is tapped as today); `check` reports the driver (installed, service on, version) and
+  exits 3 with what to do when it is not usable. New subcommands for both inputs: `swipe X1 Y1 X2 Y2 [--ms]`, `back`
+  (`input swipe` / `input keyevent 4` with `adb`). The guard (the app in the foreground) is unchanged.
+- **`validate_project.py`:** `mobile.input` accepted (`adb` | `driver`); with `--environment` and `input: driver`, a
+  line `[ok|missing] android-driver: …` (installed and the service on, read with `pm list packages` and
+  `settings get secure enabled_accessibility_services`, which work without the security option).
+- **Flows (N2):** Maestro cannot drive such a device; the flows mode stays for the emulator and devices with the option
+  on. Said in the technique.
+
+- [x] Specification: `docs/technique-mobile.md` gets a section "A real device that blocks input injection" (the
+  diagnosis, the driver, installing and turning it on, the protocol, the security, what it cannot do).
+- [x] `tools/android-driver/` and `scripts/build_driver.py`; unit tests for the build script with a fake toolchain.
+- [x] `device.py` (`mobile.input`, the driver route, `swipe`, `back`) and `validate_project.py`; unit tests with the
+  fake adb (the `content call` lines, the comma arguments, the base64 text, a refused or off service → exit 3).
+- [x] On the phone (the user installs the final APK once): `device.py check`, `tap`, `type` with accents, `send`,
+  `swipe`, `back` in the real mobile workspace. 12.10.2026: `check`, `tap`, `type` (accents and a symbol, into the
+  app's React Native field), clearing the field (`text` with no argument), `back` and `swipe` passed with the app
+  logged out; `send` waits for the login of the pilot. `send` passed in the pilot (after the floating accessibility
+  shortcut was turned off: it covered the send button — now in technique §1.2).
+- [x] Pilot (with the user's approval of each step): one batch of the real mobile workspace run on the phone through
+  the driver by `/test-mobile`, without "assisted" steps, applied at `/checkpoint`; notes in that workspace's
+  `context.md`, not here.
+  12.10.2026: the retest of the open bugs on a new build (19 bugs, 17 cases) ran on the phone through the driver, the
+  login by the user (a magic link opened on the phone). Assisted steps only outside the app (the system file picker,
+  airplane mode). Applied at `/checkpoint` with the user's decisions (2 bugs fixed, 17 open). Lesson: 5 cases were
+  first set to Fail only because a linked bug was kept — the mistake the `/log-bug` skill already forbids — and fixed
+  by a correction batch; the rule stays as written.
+- [x] `docs/heuristics.md` and the techniques get what the pilot teaches (anonymised): three patterns in heuristics
+  (a silent refusal of a file type with a stale error, feedback controls only on some answers, the floating
+  accessibility button over the app); technique §1.2 (the shortcut off, other apps as the person's steps).
+
+### 11.8 Pilot of remote execution on a runner — in progress (started 13.10.2026; the end-to-end waits for the user)
+*User decision (04.10.2026): no pilot now; remote execution stays available, validated only against the fakes and
+the fictional golden (methodology §15). The first real project that runs a batch on a runner goes through this
+checklist in its own workspace first, with the user's approval of each step; the optional AVD cache of 11.6 is
+measured then. (Until 12.10.2026 this was 11.7.)*
+
+- [x] Prerequisite (13.10.2026): the runner tests on its emulator through `adb` whatever `mobile.serial` /
+  `mobile.input` say (11.7 set them to a physical phone and the companion driver, which a runner does not have).
+  `QA_MOBILE_SERIAL` / `QA_MOBILE_INPUT` override them (flag > variable > `project.yaml` > default) in one place,
+  `common.mobile_target`, used by `device.py`, `run_mobile.py --helper`, `remote_login.py` (through those two) and
+  `validate_project.py --environment` (no driver asked for with `adb`); `mobile.yml` sets both at job level
+  (`emulator-5554`, the first emulator of a clean runner: the value must be known at step 5, before the boot) and its
+  emulator step stops the run when that serial is not the emulator that booted. technique-mobile.md v1.5 §1.2, §11.1.
+- [x] Fix found in the pilot (13.10.2026): `workspace_ci.py install --yes`, run from an agent's shell on Windows, ran
+  `gh secret set` interactively and three secrets were stored with empty values: Python's `isatty()` is True for the
+  NUL device there. `is_terminal()` now asks for stdin and stdout both a terminal and, on Windows, a real console
+  (`GetConsoleMode`); otherwise no secret is set and the commands are printed for the user's own terminal (a secret
+  set wrongly: `gh secret set NAME` again overwrites it). `docs/workspace/ci/README.md` step 3.
+- [x] The runner's side, run by run (13–14.10.2026; one fix per run, in the change log): the build as a release, the
+  `ci:` section, the batch file, the workflows and the secrets; then disk, AVD, emulator, `adb`, the login helper flow
+  (it now opens the app and passes the notifications dialog and the onboarding of a fresh install), the login issue
+  (opened, and found by `wait`), the project's status words, and — with the input `login: skip` and a local
+  reproduction of the agent step — the agent (`device.py launch`, one allowed command per call), `post-check` and the
+  pull request's body. A diagnostics artifact on every run; no pull request when nothing ran. `apply-merged` applied a
+  run log to a copy of the real workbook (local remote). Pull requests #9–#26.
+- [ ] The end-to-end with the user: R01 from GitHub with `login: issue`, the link pasted in the issue within 30 minutes,
+  the agent's batch, the pull request reviewed and merged, the workbook updated by `apply.yml`. Waits for the Actions
+  minutes (the month's 2 000 ran out on 14.10.2026; the spending limit at 0 stopped the next run, as intended). Time,
+  turns and minutes go to the workspace's `context.md`.
+- [ ] `docs/heuristics.md` and the techniques get what the pilot teaches (anonymised).
+
+Acceptance of the phase: with only a browser (no emulator, no local clone), the user can publish a build, start a
+batch, paste the login, review the PR and see the workbook updated; the unit tests and the fictional golden pass
+(methodology §15).
+
+---
+
+## Phase 12 — `qa-ui`, a local web interface
+
+Why: every step of the work cycle is a skill typed in a Claude Code session, one at a time, and what the session
+decided (which type of test, which batch, what is waiting for the user) is only in its text. The user asked
+(06.10.2026) for an interface: give it cases, or a document with cases, and it suggests which type of test to apply
+and starts them. A visual proposal and a clickable prototype with fictional data were reviewed first, outside this
+repository (06.10.2026); this phase builds the real one. It adds no method: it is a front of the existing skills,
+scripts and adapters, and everything it writes is a file a session would also have written.
+
+Decisions of the user (08.10.2026):
+- **Where:** a web page served by this computer, inside `qa-assistant` (`python -m qa_ui <workspace>`), Python's
+  standard library only (no new dependency), one workspace at a time.
+- **Who runs the tests that need an agent:** Claude Code **headless**, started by the interface in the workspace,
+  with the user's subscription, as the runner of phase 11 does. The scripts that need no agent run directly.
+- **Suggestion:** deterministic rules first (immediate, testable, no cost), and a button to ask Claude for a finer
+  reading when the input is free text.
+- **Pace:** the whole phase in one go, one commit per task, on the branch `plan/qa-ui`, nothing pushed until the
+  user says so.
+
+Constraints written down now:
+- The page shows a real project's data: loopback only, a token per start, no external request, nothing written in
+  this repository, no value of `.env` ever sent to the page (`docs/qa-ui.md` §2).
+- Nobody answers the agent during a run started by the interface, so the rules of a remote run hold: `Question`
+  for a doubt, a new bug only as `"proposed": true`, nothing applied nor sent. The approval happens in the
+  interface, as an edit of the run log (methodology §9.4).
+- The interface is in English, like the rest of the repository (plan 8.11).
+- The tests never start a real Claude session, a browser or a site: a fake `claude` and fake scripts.
+
+### 12.0 Specification first (methodology §15) — done 08.10.2026 (`f67d305`)
+- [x] `docs/qa-ui.md`: what it does and never does, where it runs and the privacy rules, the three screens, the
+  sources and formats of the intake, the suggestion rules (signals and weights per module, the cards and their
+  levels, what makes a card ready), asking Claude, the batch plan, the new cases through the adapter, the runs
+  (Claude Code headless per module, the two automated audits, stopping), what needs the user, the apply step, the
+  HTTP routes, the tests and what is not done.
+- [x] Methodology: §9.4 — a run started from the local interface is unattended like a remote run; the approval
+  happens in the interface. Version 2.5, with a migration note.
+- [x] `CLAUDE.md` references `docs/qa-ui.md`; `docs/workspace/gitignore` ignores `.qa-ui/`.
+- Note (where the spec was open): no key is added to `project.yaml` (the limits are options of the command, so
+  `validate_project.py` does not change); a card's readiness reuses `validate_project.environment` instead of a
+  second list of tools; `.docx` is read with the standard library (it is a zip of XML) and `.pdf` is left out;
+  the two automated audits are a first pass and never write results in a run log; the interface applies a run log
+  through the adapter but never commits (`/checkpoint` keeps `context.md` and the commit).
+
+### 12.1 Intake and suggestion rules (`qa_ui/intake.py`, `qa_ui/suggest.py`) — done 08.10.2026 (`d4de9a9`)
+- [x] Parsers of `docs/qa-ui.md` §4: pasted text (arrow, tab, `|`, a header line, a Markdown table), `.csv`/`.tsv`,
+  `.txt`/`.md`, `.xlsx`, `.docx`; notes kept apart; the flags `no-expected`, `vague-expected`, `several-expected`,
+  `duplicate-id`.
+- [x] The library: the workbook through the Excel adapter (read only) or `tracker/cases.json`; `not-in-library`.
+- [x] The rules of §5.1 (one module per case, the signals returned with it) and the cards of §5.2 with their
+  levels; readiness from `project.yaml` and `validate_project.environment`.
+- [x] Tests: each format, each rule and tie, each level, the demo workspace as the library.
+- Note (where the spec was open): `ExcelAdapter.case_rows()` (read only) is what the library is read with, instead
+  of the adapter's private iterators. An ID of the library is an ID whatever its form (a work item number), and a
+  case of the input that is in the library gets from it the fields the input did not give. `.xlsx`: every sheet
+  with a header row, the sheet as the area. The rules were tightened while writing their tests: `header` (a page
+  has one) and the ID part `ACC` (as often an account) are not signals, `REST` only in capitals, a status only at
+  the start of the expected result; `vague-expected` only with six words or fewer. A `.docx` that declares XML
+  entities is refused. 36 new tests.
+
+### 12.2 Batch plan and the workspace's state (`qa_ui/plan.py`, `qa_ui/workspace.py`) — done 08.10.2026 (`2c6a0ab`)
+- [x] The plan of §6: batches per module, area and role, split at 20, the cases listed apart, the counts adding up
+  or a refusal; names free in `batches/` and `runs/`; `batches/<name>.yaml` written only on save.
+- [x] The state of §11 (`GET /api/state`): the project, the planned batches, the run logs with their counts and
+  what needs the user; a run log's edits of §9 (approve, edit, link, drop, answer), refused for an applied batch.
+- [x] Tests: the counts, the split, the names, the files, each edit and each refusal.
+- Note (where the spec was open): the cases of an area without a role are a batch of their own (the spec said
+  "with the others of its area", which does not say which when the area has several roles). The check before
+  applying reuses `workspace_ci.refusals` and `workspace_ci.adapter_problems`, so the interface and the pull request
+  of a remote run refuse the same run logs. An answer keeps the question in the item's `question` key. The state
+  sent to the page has the environments' keys, never their URLs, and the names of the `.env` variables, never a
+  value. A run log that is not valid JSON is listed with its error instead of breaking the list. 24 new tests.
+
+### 12.3 The runs (`qa_ui/runs.py`, `qa_ui/prompts/`) — done 08.10.2026 (`fcc1841`)
+- [x] One run at a time; the command per module of §8.1 (the prompt filled in, the tools allowed, the limits) and
+  the two audits of §8.2; the run log created first with the `run` block; the output redacted and stored in
+  `.qa-ui/runs/`; stop (§8.3); the time limit.
+- [x] Asking Claude (§5.3): the prompt, the JSON read strictly, anything else shown as text.
+- [x] New cases (§7) and applying a run log (§10): the dry run, then the real run only with the confirmation.
+- [x] Tests with a fake `claude` and fake scripts: a run that writes results, a failure, a stop, a second run
+  refused, a secret redacted, an answer that is not JSON.
+- Note (where the spec was open): the prompt carries the cases' text from the library (the agent cannot read a
+  workbook with the tools it is allowed) and goes through standard input, never the command line. The agent passes
+  a proposed bug as a file to `run_log.py add --new-defect`, so it needs no direct edit of the run log. The output
+  is `stream-json`, rendered as the agent's text and one line per tool; the final text is not repeated from the
+  result event. A stop is an interrupt to the command's process group, a kill after ten seconds (Windows: a
+  CTRL_BREAK, then `taskkill /T`; that path is not covered by the tests, which run on Linux). The flags and the
+  event format were checked once against the real Claude Code CLI (2.1.293) with a one-word prompt, and the asking
+  prompt once with four fictional cases: strict JSON back, every case assigned, six gaps. No batch was run with the
+  real CLI (that is the user's first run, 12.5). 25 new tests (two need LibreOffice).
+
+### 12.4 Server and page (`qa_ui/server.py`, `qa_ui/static/`) — done 08.10.2026 (`645ed76`)
+- [x] The server of §2 and the routes of §11: loopback only, the token, the `Host` check, the status codes.
+- [x] The page: the three screens of §3 as reviewed in the prototype, no external address, usable with the
+  keyboard, a narrow window included.
+- [x] `python -m qa_ui <workspace>` with its options and exit codes; the `Scripts` section of `CLAUDE.md`.
+- [x] Tests: the server on an ephemeral port (token, host, each route's happy path and refusals); the page has no
+  external address; the hook `tests` of `pre-commit` runs when `qa_ui/` changes.
+- Note (where the spec was open): the page and its script hold no data, so they are served without the token; the
+  page removes the token from the address bar and keeps it for the tab. No request line is printed. A content
+  security policy allows only the page's own script and stylesheet, so the page has no inline script or style and
+  writes everything that comes from the workspace as text. The page is in English and follows the prototype's three
+  screens; what the prototype simulated and is now real: the rules, the plan, the run and its output, the edits and
+  the apply step. Looked at in a headless Chromium against a fictional workspace and the fake `claude` (intake,
+  suggestion, a run to its end, approve, answer, ready to apply): no console error and no request to another
+  address; the narrow window was rendered but not looked at. 15 new tests.
+
+### 12.5 Documentation and closing — done 08.10.2026, the first real batch left to the user
+- [x] `README.md` (how to work, with the interface; the state table). `CONTRIBUTING.md` and `CHANGELOG.md` do not
+  change: no rule changed and the `qa-audit` engine was not touched.
+- [x] The whole suite (766 tests, 100 of them new), `ruff check .` and the fictional golden pass; `python -m qa_ui
+  examples/demo` started and answered with the demo's state and its 38 cases; the page looked at in a headless
+  browser against a fictional workspace (note of 12.4).
+- [x] A real batch from the interface (a real `claude`) — done 17.10.2026 on a mobile workspace (a conversational
+  app on a real phone through the driver, Windows): recorded in 12.6 with what it changed. Until then the interface is validated only against a fake `claude`, like phases
+  10 and 11 against their fakes. To check then: the skills in sync (`python scripts/sync_skills.py --apply`), the
+  Playwright MCP loaded from the workspace's `.mcp.json` in headless mode, the permission patterns of the scripts
+  on Windows (absolute paths with forward slashes), stopping a run on Windows, and whether 150 turns and 60 minutes
+  fit a batch of 20 cases.
+- Not run here: the `pre-commit` hooks themselves (not installed in the session that built this phase; their
+  checks were run by hand: ruff, the tests, the golden, detect-secrets against the baseline) and the personal
+  denylist, which exists only on the user's computer — run `pre-commit run --all-files` there before the merge.
+
+### 12.6 Fixes from the first real batch — done 17.10.2026 (branch `fix/qa-ui-first-real-batch`)
+The first batches from the interface on a real workspace (a mobile-only project whose workbook is not in English)
+ran end to end — start, the agent on the phone, the questions answered in the page, apply — and showed five gaps,
+all fixed for any project:
+- [x] The library lost the title and the expected result of every case (headers in the workbook's language, not
+  mapped in `excel.cases.fields`), so every case came back `Question`. `adapters/case_headers.py`: the headers of
+  the case model in English, Portuguese, Spanish, French, German and Italian, compared without case, accents or
+  separators; the project's mapping first, then a recognised header; a library warning on the Suggestion screen;
+  `validate_project.py` warns when `cases.fields` maps neither `title` nor `expected`; `adapters.excel.inspect`
+  proposes `cases.fields`; the demo maps its fields (`3486ecd`).
+- [x] The rules suggested `functional-web` for every case of a project without it, so no batch could start: only
+  the active modules are chosen, the signals of an inactive one are named, the default is the project's (`4019bcf`).
+- [x] Exploratory charters of a mobile project got only the browser's tools and the agent was refused the device:
+  in a project with `mobile` and without `functional-web` they run on the app with `/test-mobile` and the mobile
+  scripts; methodology v2.6 §4.1, technique-mobile v1.6 §4.2, `/test-mobile` step 2 (`b625aff`).
+- [x] A planned batch without `module:` could not start, and the message named a control the page did not have:
+  the line offers the active modules and adds `module:` to the file (`POST /api/batches/<name>/module`); the tools
+  Claude Code refused are shown as `! refused:` and under "Refused tools" (`9c8aa95`).
+- Checked: the whole suite (836 tests, 19 new), `ruff` 0.16.8, the golden, detect-secrets, `node --check` of the
+  page. The hooks were run directly, not through `pre-commit` (it could not fetch its repositories from the session's
+  machine), and the personal denylist was not reachable: `pre-commit run --all-files` on the user's computer before
+  the merge, and `python scripts/sync_skills.py --apply` for `/test-mobile`.
+- Still the user's: a batch on a web site (the Playwright MCP from the interface), stopping a run on Windows, and
+  whether 150 turns and 60 minutes fit a batch of 20 cases (12.5).
+
+## Phase 13 — The hub: every project in `qa-ui`
+
+Why: `qa-ui` opens one workspace, given on the command line, and what a project is (its environments, its
+credentials, its history, what the user knows about it) is spread over files the user opens by hand. The user asked
+(21.10.2026) for one interface to do the different types of test, keep the projects and their information, and
+come back to them: the platform of the user's daily QA work. A demo video of the current cycle was the reference.
+This phase puts every project of `qa-workspaces/` behind the same page; it adds no method, and the screens of phase
+12 stay as they are inside each project.
+
+Decisions of the user (21.10.2026):
+- **Where the projects live:** always `qa-workspaces/<company>/<project>/`, next to this repository; nothing else is
+  registered.
+- **Credentials:** left to the framework's completion; decided here as **typed in the page, write-only**: the value
+  goes only to the workspace's `.env`, never back to the page, a log or another file; `.env.example` keeps the
+  names (`docs/qa-ui.md` §14.6). Filling `.env` by hand keeps working.
+- **Runs:** one at a time on the whole computer, not one per workspace (§14.3).
+- **Pace:** one task at a time on the branch `plan/qa-hub`, one commit per task, nothing pushed until the user says
+  so.
+
+Constraints written down now: the privacy of §2 holds for every project; a project in a route is looked up in the
+discovered list, never joined as a path; the hub writes nothing in this repository; Python's standard library
+only, like phase 12; the interface in English; the tests never start a real Claude session, a browser or a site.
+
+### 13.0 Specification first (methodology §15) — done 21.10.2026
+- [x] `docs/qa-ui.md` v1.1, §14: starting, discovery, one run on the computer, the screens, a new project, the
+  overview and the write-only credentials, notes, library, history, the routes, privacy, tests, what is not done.
+
+### 13.1 Discovery and the Projects screen (`qa_ui/hub.py`) — done 21.10.2026
+- [x] The discovery of §14.2 (two levels, names, no link or junction followed, an id looked up and never joined) and
+      the summaries of §14.4 (tracker, modules, the last run log and its counts, what needs the user in the run logs
+      not yet applied; a broken `project.yaml` is said on its card, relative to the project); `GET /api/hub`,
+      `POST /api/hub/pins` (`~/.qa-assistant/qa-ui.json`, ids only) and `GET /api/mode` in both modes.
+- [x] `python -m qa_ui` without a workspace starts the hub over the root (created empty when missing, exit 2 when it
+      cannot be); with one, unchanged.
+- [x] One run at a time on the computer (§14.3): `runs.Gate`, shared by the hub's runners; a runner alone keeps
+      its own (one run per workspace, as before). The refusal names the project, the run and when it started.
+- [x] The Projects screen: cards grouped by company, pinned first, the run in progress, the inbox's count; a
+      project opens for now with `python -m qa_ui <workspace>` (inside the hub with 13.2).
+- [x] Tests (`tests/test_qa_ui_hub.py`, 19; 838 → 857): a fictional root (discovery, refusals, a link, summaries, an applied
+      run log, a broken `project.yaml`, no `.env` value), the pins, the shared Gate, the routes over HTTP, the
+      command line. Checked by hand: the user's two real workspaces discovered in 0.3 s; the page at 1280 and 390
+      px wide with a fictional root, no console error and no horizontal scroll.
+
+### 13.2 The projects' routes and the Test screen inside a project — done 22.10.2026
+- [x] `/api/p/<company>/<project>/…` to the routes of §11, an `App` and a `Runner` per project, created when first
+      used and sharing the hub's Gate (the id looked up in the discovery, never joined); the project's state says a
+      run in another project (`run_elsewhere`), shown in the top bar.
+- [x] The page's address `#/p/<id>/<screen>` (`test` for now), a reload or a bookmark opening the same place; the
+      card's **Open**; switching project without restarting (the screens of the previous project set again); a
+      project that is not discovered goes back to the Projects screen with the error.
+- [x] Tests (`tests/test_qa_ui_hub.py`, 4 new; 857 → 861): the routes under an id, the App kept, the refusals (`..`,
+      encoded, not discovered, a third level), a broken `project.yaml` said, a run in another project shown and
+      refusing. Checked with Playwright and the installed Chrome over a fictional root at 1280 and 390 px: open,
+      reload, switch, an unknown id, back; no console error but the expected 404, no horizontal scroll (the root's
+      path in the Projects screen now wraps).
+
+### 13.3 Overview, credentials and notes (§14.6, §14.7) — done 22.10.2026
+- [x] `qa_ui/overview.py`: the Overview (`project.yaml` as text and its main keys, the readiness, `workspace_git.py
+      status` with its exit code, `context.md`, each `.env` variable set or missing), answered also when
+      `project.yaml` cannot be read; the card of such a project opens it.
+- [x] Credentials write-only: a name `project.yaml` refers to or `.env.example` lists, no line break, no empty value;
+      the line replaced or added, the other lines kept, quoted when `read_env` would change it, mode 600 on POSIX;
+      the answer is `{"name", "set": true}`, the page empties the field whatever happens.
+- [x] Notes in `notes/<name>.md` (letters, digits, `-`, `_`; 200 KB), listed, opened, edited and created as text;
+      `"new": true` refuses an existing note; a note holding a `.env` value of 4 characters or more is refused, the
+      error naming the variable, never the value; a `notes/` or a note that is a link is refused.
+- [x] The project's bar (Overview, Test, Notes) and `#/p/<id>/<overview|test|notes>`; the steps of the Test screen
+      no longer catch the bar's links.
+- [x] Tests (`tests/test_qa_ui_hub.py`, 6 new; 861 → 867): the Overview without a value, a broken `project.yaml`, a
+      credential written to `.env` only (no other file under the root, no response), its refusals, the notes and a
+      note refused for a credential. Checked with Playwright and the installed Chrome at 1280 and 390 px: a
+      credential typed and saved (the field emptied, the value in no response and nowhere in the page), a note
+      created and one refused, the bar, a reload, a broken project's Overview; no horizontal scroll.
+
+### 13.4 New project (§14.5)
+
+### 13.5 Library, History and Inbox (§14.8, §14.9, §14.4)
+
+### 13.6 Settings (§14.4)
+
+### 13.7 Documentation, the whole suite and the pilot on the user's workspaces
+- [ ] `README.md`, `CLAUDE.md` (`Scripts`), the skill `/project-onboarding` (it continues a project the hub
+      created); the pilot on the user's computer with the real workspaces.
+
+## Phase 14 — Ticket analysis (`/analyze-tickets`)
+
+Why: the user follows a project's tickets by hand, and "what changed since I last looked?" had no answer that could be
+trusted. Decisions approved by the user (01.11.2026): one flow for Azure DevOps and Jira, independent of Xray and of
+`tracker:`; the official state apart from the QA situation; a comparison per component that never concludes from a
+partial read; the memory inside the workspace; nothing written to a tracker.
+
+### 14.1 Specification, engine, skill and tests — done 01.11.2026, real read of each service pending
+- [x] `docs/technique-tickets.md`; methodology v2.7 (§3, §5.1, §12.2); the `tickets:` section in `docs/project.yaml` and
+      in `scripts/validate_project.py`.
+- [x] `adapters/tickets/`, on the API classes and HTTP client of the tracker adapters, whose contracts are unchanged;
+      every request through a transport that cannot write. Reads through an API or a bundle from a logged-in browser,
+      through the same normaliser. `tests/test_tickets.py` with fictional fakes.
+- [ ] A real read of Azure DevOps and of Jira: until then both are "validated with fixtures"; what differs is fixed in
+      the technique first (methodology §15). Tried on 01.11.2026 in a browser without a session: only the 203 sign-in
+      answer was seen, no ticket.
+
+## Phase 15 — Central skills and project workspaces
+
+Why: the framework should work as a central library of skills that finds the selected project, runs only what is authorised, and keeps results and memory in that workspace. Approved by the user (specification of 01.11.2026). Not in this phase, kept in the backlog unless a dependency shows up: finishing the hub, a cloud migration, new types of test, a writing pilot of Jira or Azure DevOps, the remote end-to-end.
+
+### 15.0 Inventory — done 01.11.2026
+Confirmed against the code: PR #37 merged, but the main checkout on another branch without `adapters/tickets/` (`No module named adapters.tickets` from a workspace's skill); the hub's root resolved inside `.claude/worktrees/` from a worktree, and created empty; analysing an old check rewinding `context.md`, and a second scope erasing the first; the verification prompt in no Markdown; `first-and-no-changes` undocumented. The silent exit of `pre-commit` on this computer is a launcher left by a removed Python 3.14; the git hook uses another interpreter and works.
+
+### 15.1 Stabilisation — done 01.11.2026
+- [x] `scripts/sync_skills.py` records the checkout a global copy came from, and refuses a skill whose code is not there; `preflight` stops with an instruction, also on an old checkout without the module.
+- [x] An explicit order of the checks; a block of `context.md` rebuilt from the memory, one row per scope; an old analysis kept with its check; the last attempt apart from the last complete reference.
+- [x] A structured `verification_prompt`, validated without forcing what is unknown, rendered in `<id>.analysis.md` with its readiness.
+- [x] Coverage: `listed_only`, a `vstfs:///` link never taken as read, a section Coverage and limits.
+
+### 15.2 Workspaces and skills — done 01.11.2026
+- [x] `docs/technique-workspaces.md`; `scripts/workspace_select.py` (`where`, `list`, `resolve`, `preflight`, `skills`, `set-root`), with the hub's discovery moved there; `<root>/<project>/` also in the hub.
+- [x] A root never created; a configurable root; a worktree resolves the main checkout's root.
+- [x] `common.workspace_path`: no write outside the workspace or into `history/`, links and traversal included.
+- [x] Each skill's contract in its frontmatter, and its preflight; no entry skill, because no gap needs one; tickets in `/project-onboarding`.
+
+### 15.3 Impact on cases — done 01.11.2026
+- [x] `adapters/tickets/impact.py`: confirmed and candidate cases from the library, read only, without taking a bare number for a ticket; linked to the analysis and to the prompt.
+
+### 15.4 Real read pilot — Azure DevOps through a browser done 01.11.2026; its API route and Jira pending
+- [x] Azure DevOps, browser route, on a real workspace, with tickets the user authorised and the user's own login, reading only: fields, comments and relations compared by hand with the page; a repeat without changes (`no-changes`); a historical change compared with the API's revisions, in a temporary workspace (no ticket changed); a resume in a new process; evidence only in the workspace.
+- [x] What it found, now fixed with fictional tests: links only in `href` (most tickets), comments in Markdown with `@<GUID>` (`renderedText`), a state named `Blocked`, references as `DevOps 123` or `(123: ...)`, the author of a change to a relation. A rehearsal found a path over Windows' limit: exit 5, with what to do.
+- [ ] Azure DevOps with a token (API route): no token was used.
+- [ ] Jira: no site was given; implemented and tested with fixtures only.
+- [ ] A resume in a new Claude session (a headless agent was refused by the session's permission rules); it was shown in a new process.
+
+### 15.5 Consolidation — done 01.11.2026
+- [x] Documentation, the phase table, the runner's guide, the skills synced, an isolated run like the CI's (Python 3.12 and the pinned versions).
+
+### 15.6 Audit of the skills and the workspaces — done 01.11.2026
+Why: a full audit of the integration (discovery, isolation, memory, run logs, skills, interface, tests) with each finding reproduced before it was fixed. A suspicion read in code is a *risk* until a test shows it. Reproductions are tests; the fix is the smallest change.
+
+| ID | Class | Finding | Fix | Test |
+|---|---|---|---|---|
+| D-01 | confirmed defect (usability) | A project in a folder with a space or an accent (`Acme Corp/Web Shop`) was absent from `list`, from name search and from the hub, as if it did not exist | Listed as `incomplete`, "rename the folder"; `--workspace PATH` opens it; hub names it without a card; onboarding is not proposed for it | `test_workspace_select` (2), `test_qa_ui_hub` |
+| D-02 | confirmed defect (data) | Two sessions on one workspace: the second's cleanup removed the first's temporary file (the first failed with exit 5); the run log, the ticket memory and the interface's edits lost updates; on Windows the write guard refused paths that were inside (realpath answers `\?\` forms and a `$Deleted` path for a file being deleted) and `os.replace` failed for a moment with `PermissionError` | `common.workspace_lock` (one writer, stale locks taken over), `common.plain_path`, a guard that resolves the folder, `common.replace_file` | `test_common` (13), `test_tickets_memory.Concurrency` (2), `test_run_log` (2), `test_qa_ui_plan` |
+| D-03 | confirmed defect | A bundle or an analysis that could not be opened was reported as a memory that could not be written (exit 5) | Exit 4, naming the file | `test_tickets_memory.UnreadableInput` (2) |
+| D-04 | confirmed defect | The runner of `qa-ui` left the child's input pipe open when writing the prompt failed (a leaked handle) | Closed always | `test_qa_ui_runs` |
+| D-05 | technical debt | `os.path.commonprefix` is deprecated in Python 3.15 (`adapters/excel/inspect.py`) | A string prefix, same result | `test_inspect.TokenPrefix` (4) |
+| D-06 | risk | Files were replaced without being flushed to the disk | `fsync` before the rename, in the ticket memory and the run log | 2 tests of the order |
+| D-07 | dead code | `ExcelAdapter.update_defect_note`: no reference in code, tests, docs or skills | Removed | adapter tests and the golden unchanged |
+| D-08 | confirmed defect (evidence) | The interface redacted a run's output with the whole `.env`, flags included: `HEADLESS=1` turned every `1` into the variable's name; the API script already ignored values under 4 characters, with a literal of its own | One `SECRET_MIN` in `scripts/common.py`, applied by `Redactor` and used by the API script and by the notes of the interface | `test_common.ShortEnvValues` (2) |
+| S-01 | confirmed (usability) | Skills named `technique-*.md` and `methodology.md` without a folder, and a workspace is outside the repository | Step 0 of every skill says they are in `<qa>/docs/` | `test_skills` |
+| S-02 | risk | The last-resort path to `<qa>` was wrong for `<root>/<project>/` | Both depths in the skills and the technique | `test_skills` |
+| U-01 | usability | The Projects page told the user a project could be created "with plan 13.4"; each screen had the same tab title; focus stayed on a link that was gone after a route change | "not available yet"; title `<screen> · <project>`, focus on the heading; the onboarding hint only when it applies | checked in the browser (no JS test harness) |
+| E-01 | environment | The `qa-audit` launcher pointed at a removed Python and printed nothing | `python -m qa_audit` | `tests/unit/test_cli.py` |
+| E-02 | test noise | A fake HTTP server printed tracebacks; `test_common.py` and `test_inspect.py` had a `__main__` guard in the middle of the file | Handler tolerant of a client that left; one guard at the end | the output of the suite |
+| G-01 | usability | The workspace `.gitignore` did not list the lock and the leftovers of a stopped writer | Three lines in `docs/workspace/gitignore` | `test_workspace_git` |
+
+The first two points kept open here, and D-01 and D-08, were revised in 15.7. The real validations that need a token, Jira, a device, a runner or a new Claude session stay as in 15.4.
+
+### 15.7 Consolidation of the audit — done 01.11.2026
+The commit of 15.6 reviewed line by line: in scope, no client data, no test or guard weakened. Revised:
+
+| ID | Class | Finding | Fix | Test |
+|---|---|---|---|---|
+| D-09 | confirmed regression of D-08 | The minimum of 4 applied to every value, so a short explicit secret (a tracker's, `--save-secret`, a mobile variable) was no longer hidden, nor was a PIN in a JSON number | Sensitive values hidden whatever their length, flags left alone, short values matched as whole words (`technique-workspaces.md` §7) | `test_common.Redaction` (6) |
+| D-01b | D-01 reversed | The rule on folder names came only from building the id; "rename the folder" was not needed | Any name; id, name and path apart; routes encoded | `test_workspace_select` (2), `test_qa_ui_hub` (2) |
+| D-02b | risk confirmed by reading | A live holder older than 15 minutes could lose its lock, a reused id kept it for 15 minutes, a nested lock waited for itself, a waiter could remove another's new lock | Identity with the start time, heartbeat, reentrant per thread, takeover file, token | `test_common.WorkspaceLock` (8 new, 2 real processes) |
+| S-03 | gap | `/generate-cases` read the analysis from the conversation | `analysis/<feature>_<date>.md`, with sources, date, status; what is proposed stays proposed | `test_skills` (text only: no agent ran it) |
+| D-11 | usability (misleading) | `complete` beside "every component was read" could read as if the links had been analysed | The outcome says it is about the collection; the record counts what was not opened or followed | `test_tickets_memory.CompleteIsAboutTheCollection` |
+| D-10 | defect | `A="x" # note` kept the quotes and the comment in the value | The rule of `technique-workspaces.md` §7; `validate_project.py` warns by name; `write-env` quotes | `test_common.EnvFile` (2) |
+
+
+### 15.8 Daily use of the mobile flow — done 02.11.2026
+Why: the first daily-use session on a real workspace (3 cases, a Redmi with the driver, 02.11.2026) showed what the framework still makes hard. Each finding below was confirmed in the code first, and the specification (`technique-mobile.md` §1.3, §1.4 and §4.1, methodology §7.1 and §12.2) was written before the code.
+
+| ID | Class | Finding | Fix | Test |
+|---|---|---|---|---|
+| D-12 | confirmed defect | `run_log.py add` accepted any case ID: a `TC-SHOP-099` that no library has entered a real run log | The ID is checked against the library (workbook or `tracker/cases.json`) before the write, with the closest known ones; a library that cannot be read is an error. `remove` takes a mistaken result out of a batch not yet applied: it shows it, keeps the others, never deletes evidence, refuses an applied batch, under the lock | `test_run_log` (9) |
+| D-13 | confirmed (usability) | `device.py check` stopped at the first thing missing, and the driver's setting and its answering were one fact: the setting was on while the service answered "service off", and it took three rounds to find out | One report: device, app, driver (setting and answering apart, with the recovery as advice, nothing changed on the device), observed build against the intended one, environment, session (confirmed, needed or unknown from `mobile.session`), ready or not | `test_device.OneCheck` (8) |
+| D-14 | confirmed (usability) | `/run-batch` on a mobile-only project listed the Playwright MCP as missing | `Route: /test-mobile` and no MCP requirement (`routes-mobile-only-to` in the skill's contract); `Next:` names the one check | `test_workspace_select` (4) |
+| D-15 | confirmed (consistency) | Three different "current builds" (`CLAUDE.md`, `project.yaml`, the device), and a run's build could be rewritten while the batch had results | Three roles: intended (`mobile.build`), observed (`device.py check`), of the run (`run.build`, immutable once the batch has results: another build or environment is refused). `check --batch` stops a batch whose build changed | `test_run_log`, `test_device.OneCheck`, `test_common.Builds` |
+| D-16 | confirmed (cost) | `context.md` had 95 000 characters, 44 000 of them in 34 dated entries of the current state | `scripts/compact_context.py`: the older dated entries move word for word to `archive/context/`, after a copy of the whole file; dry run by default; an entry with a rule is flagged first (words from `context.rule_words` of `project.yaml`) | `test_compact_context` (13) |
+| D-17 | gap | A complete final answer cannot show streaming, and the only trace of it in L46 is one capture in the middle | `send --samples N`: timed samples, limited in number and seconds, partial text detected, a failed capture told apart from a failure of the app | `test_device.StreamingSamples` (5) |
+
+Not changed: the results already applied. TC-SHOP-001 of a pilot batch expects a progressive answer, and its evidence is indirect (a capture in the middle and dumps that failed while the screen animated): a specific review, or a retest with `--samples`, is a decision of the team and is not made here. The button without an accessible name is an observation about the app, kept in the workspace, not a bug. The 15.7 consolidation had dropped the heading of the change log below; it is back.
+
+## Phase 16 — Consolidation for the proof of concept (08.11.2026)
+
+Goal: close the gaps between what the framework claims and what is verified, without new features, and prepare the proof of
+concept: the guards really active, a CI that never reports a test that did not run as covered, one scope, documentation that
+agrees with the code, and an honest state of each tracker. The analysis it answers is a private working document; only the
+findings relevant to the framework are recorded here, in generic terms.
+
+### 16.1 Execution board
+
+| Task | Depends on | Evidence | State |
+|---|---|---|---|
+| Hooks installed and the privacy guard hardened: no list, empty list, unreadable list and unreadable file said explicitly; no term ever printed; `python` not needed on the PATH for the denylist hooks; `where` reports the guards | — | `tests/test_denylist.py` (16), `tests/test_guards.py`, `tests/test_workspace_select.py`; a disposable repository with a fictional term: a file, a file name and a commit message blocked; no list warned; required and missing refused | Done |
+| Environment reconciled: `pre-commit` and `ruff==0.16.8` in the environment in use; a throwaway environment from `requirements.txt` and `pip install -e .[dev,visual]` runs the whole suite | — | Full suite in the pinned environment; a known difference: `pillow` is newer in the shared environment because another tool requires it | Done |
+| Leaked temporary remote of the suite | — | Cause confirmed (a `tmp/../x-remote.git` path no longer resolved after `tmp` was removed); fixed; the suite leaves nothing in a private `TMPDIR` | Done |
+| `demo-e2e` states: skipped without its secrets, failed, or passed with the number of specs | — | `ci.yml` (`demo-secrets` + `demo-e2e`); the real workflow is validated on the pull request | Implemented; the external demo itself stays off until the user supplies practice-account secrets |
+| CI counts and skips of the unit tests in the run summary | — | `ci.yml` (`tests` job) | Done |
+| LibreOffice tests of the interface's runner | qa-ui scope | the shared logic they protected (cases added and a batch applied with the real recalculation) moved to `tests/test_excel_recalc_flows.py`, run in the `golden` job | Done |
+| Install, sync and preflight smoke | — | `tests/test_install_smoke.py`; the `install` job runs it on a clean clone | Done |
+| Fictional ticket demo (`/analyze-ticket`, `/test-pbi`) | — | `examples/demo/tickets/`, the `tickets:` source, `tests/test_tickets_demo.py` | Done |
+| Reproducible walkthrough | — | `docs/demo-walkthrough.md`, `tests/test_demo_walkthrough.py` | Done |
+| Permanent rules in an imported `context.md` | — | methodology §12.2 (v2.14), `tests/test_compact_context.py`; the compactor needed no change | Done |
+| Skills' agent-behaviour evaluation | the user: model, budget | `docs/skills-evals.md` (ten scenarios) | Prepared, **not run** |
+| Tracker validation | test instances | `docs/tracker-validation.md`; suites run in the pinned environment | Fixtures validated; the real pilots are **blocked** (no test instance) |
+| `qa-ui` and the hub out of the product | — | scope above; the shared test helper renamed (`tests/workspace_kit.py`) and two shared tests decoupled first; then `qa_ui/`, its 7 test modules and `docs/qa-ui.md` removed with the owner's approval; the full suite and the CI re-run on the final content | Done |
+
+### 16.2 The 26 findings of the analysis, in generic terms
+
+| Finding | State |
+|---|---|
+| F01 (guards not effective) | Resolved and validated |
+| F02 (a project name in branches) | Closed: the name is not confidential; no history rewrite |
+| F03 (a CI job green without running specs) | Implemented; validated on the pull request; activating the external demo needs credentials the user holds |
+| F04, F22 (roadmap versus changelog and evidence) | Resolved: scope, summary table and this phase |
+| F05 (what the skills' tests prove) | Resolved in the wording; the agent evaluation is prepared and not run |
+| F06 (LibreOffice tests of the interface) | Resolved: the shared coverage moved to `tests/test_excel_recalc_flows.py`; the interface-only tests went with the interface |
+| F07, F12 (platforms) | macOS: the suite runs; Windows, Firefox and WebKit on macOS: not confirmed here; no support claimed beyond the CI's Linux |
+| F08, F09, F26 (trackers on real instances) | **Pending/blocked**: fixtures validated; no test instance |
+| F10 (remote execution) | Outside this version |
+| F11, F16 (`qa-ui`, the hub, cleanup) | Done for the interface and the branches; see 16.3 for what is left |
+| F13 (mobile measurements) | Not in this phase: device work of the project concerned |
+| F14 (environment) | Resolved for the tools the guards need; `qa-audit` editable install is done from the integrated checkout after the merge |
+| F15 (skills copies) | No change needed; synced from the integrated checkout after the merge |
+| F17 (an old repository) | Not verified |
+| F18 (rules in `context.md`) | Resolved in the method and its tests |
+| F19 (ticket demo) | Resolved |
+| F20 (install smoke) | Resolved |
+| F21 (leaked temporary remote) | Resolved |
+| F23 (large files) | No action: size is not a defect |
+| F24, F25 (parallel CI, comparison across engines) | Preserved |
+
+### 16.3 Removal of the retired interface and branches (approved by the owner on 08.11.2026)
+
+- Removed: `qa_ui/` (15 files), `tests/test_qa_ui_*.py` (7 files) and `docs/qa-ui.md`. Nothing outside `qa_ui/` imported it; the shared
+  test helper and the shared LibreOffice coverage were kept first (`tests/workspace_kit.py`, `tests/test_excel_recalc_flows.py`).
+  Recovery: the git history of `main`.
+- Removed: the worktree of the old iOS branch (clean, no process) and the branches `feat/ios-wda-backend` (kept reachable by the
+  annotated tag `archive/ios-wda-backend-20261031`, which holds both of its commits), `claude/ci-optimisation`,
+  two `claude/*` task branches, `reset-skills` and `plan/qa-hub` on the remote,
+  and the merged local ones.
+- **Not removed (still open):** the worktree `.claude/worktrees/qa-assistant-skills-config-a2fbfd` and its branch
+  `claude/qa-assistant-analysis-7549a1`, because a session was working in it; and the local branches `plan/qa-hub` and `reset-skills`,
+  whose remote branches are gone (the approval named the remote ones).
+
+## Phase 17 — Output, traceability and write safety (09.11.2026)
+
+Goal: answer what a real test of one mobile project on Android and iOS showed (four cases per platform, the builds read from the
+devices, two workbooks applied, run logs and evidence kept). The findings are recorded here in generic terms; the project's own
+analysis stays in its workspace. Output stays **text**: no graphical interface, no new tracker. What a project shows in the
+terminal is a presentation choice (`output:` in its `project.yaml`, with framework defaults); **approvals stay where the project
+defines them** and the stricter rule prevails.
+
+Process: as in `CONTRIBUTING.md` (specification first, then code, then tests, one task per commit `17.<n>: <summary>`); a task
+may group related changes, and a pull request may hold several tasks. The order below follows the dependencies found when the
+work was planned, not the priority labels of the analysis: the output layer (17.4) is the foundation of the progress and report
+tasks, and the run-log changes (17.1) come before them.
+
+### 17.1 Execution board
+
+| Task | Depends on | Scope | State |
+|---|---|---|---|
+| 17.0 Register the phase | — | this section and the summary row | Done (09.11.2026) |
+| 17.1 Traceable results | — | `run_log.py`: a repeated `--evidence` never loses a path; `--ended-at` (the window of an execution); `retime` (correct only the time of a result, keeping the previous one); `attach --invalid` (an evidence kept on file and marked, with the reason); the methodology §7.1, the run-tests skill and the tests | Done (merged 09.11.2026, PR #9) |
+| 17.2 Reliable send on Android | — | the outcome of a send on Android as on iOS (never a bare NO TARGET after the tap); the advice when the dump fails. **Narrowed at implementation:** the message for a listed but stopped driver is already explicit and tested (`next:` of the check); telling «never answered» from «stopped answering» needs a remembered state and goes to 17.7 | Merged (09.11.2026, PR #10); **not validated on a real device** (fixtures and unit tests only): pending a target app with a message field and a Send button, outside any project under test |
+| 17.3 Excel writes | — | `add_cases --expect` and the workspace lock; the final recalculation put in place in one step; `apply --keep-previous` (the previous result stays in the notes). **Split at implementation:** `apply --only/--skip` is its own task (17.3b, pending a design decision): a batch is «applied» by its name (the control sheet, `run_log`, the report), so a batch applied with a subset would count its left-out results as applied | Merged (09.11.2026, PR #11); `apply --only/--skip` split out as 17.3b (design in `docs/design-17.3b-partial-apply.md`, two decisions open, not implemented) |
+| 17.4 Output layer and approval cards | 17.3 | `output:` in `project.yaml` with framework defaults; shared formatting; a short preflight; the dry run as a short card plus a file with the complete values; a summary mode of the audit; the three build lines of a device check. Done in 17.4: preflight, dry run (card + file), `run_log add/plan/progress`, one-time notices; the audit's summary mode and the build lines of the check remain | Done in two PRs: output layer (PR #12) and the audit summary plus the three build lines of the check (PR #13, in review) |
+| 17.5 Progress and reports | 17.1, 17.4 | a progress view per batch; a summary and a technical report generated from the run log, the evidence and the dry run | In review (PR #13): progress per batch (`run_log progress`, PR #12); `qa_report.py report` writes the summary and the technical report; the audit presents valid, invalid and missing evidence apart |
+| 17.6 Skills and specification | 17.1–17.5 | an output budget in the eight skills and in `docs/skills-spec.md` §3 and §6; scenarios for `docs/skills-evals.md` | Pending |
+| 17.7 iOS: screen, build and waiting | 17.4 | the build read without the WebDriverAgent; `home` and `activate`; waiting for a device | Pending |
+| 17.8 WebDriverAgent operation | — | backoff and a limit in the launcher, a warning before the profile expires (`doctor`) | Pending |
+| 17.9 Documentation and checks | — | the constraints of the agent's shell in the examples; the procedure to compare a device tool inside and outside the sandbox | Pending |
+
+**Decided later (not part of this phase until then):** a script to measure tokens and time from a session's transcript; the test of
+the device tool inside and outside the sandbox; the model and budget of the skills' agent evaluation (`docs/skills-evals.md`).
+
+## Change log of this plan
+
+| Date | Change |
+|---|---|
+| 2026-11-09 | Phase 17: 17.1–17.4 merged (PRs #9–#12); 17.4's remainder and 17.5 in review (PR #13); 17.6–17.9 pending; 17.3b design only. |
+| 2026-11-09 | Phase 17 registered (17.0): output, traceability and write safety, from a real two-platform mobile test; tasks 17.1–17.9 grouped by dependency; 17.1 (traceable results) in review. 17.4: the output layer in review (branch `phase-17/pr-4-output-layer`, on 17.3). |
+| 2026-11-08 | Phase 16 (consolidation for the proof of concept) and the product scope: Claude Code with eight skills, no interface of its own; `qa-ui`, the hub and remote execution outside this version; the three trackers in scope, with their real state in `tracker-validation.md`. |
+| 2026-11-02 | 15.8: daily use of the mobile flow (first session on a real workspace): the case library checked before a result is written, `run_log.py remove`, one check of the target, the route of a mobile-only project, the roles of a build, `compact_context.py`, streaming samples; methodology v2.11, `technique-mobile.md` v1.7. Unit tests 1133 → 1176. |
+| 2026-11-01 | 15.7: consolidation of the audit; methodology v2.10. Unit tests 1116 → 1133. |
+| 2026-11-01 | 15.6: audit of the skills and the workspaces, 14 findings, each reproduced by a test first (one writer at a time per workspace, a guard that does not refuse paths being deleted, folders with unsupported names listed, skills that say where the documents are); methodology v2.9, `qa-ui.md` v1.3. Unit tests 1082 → 1116. |
+| 2026-11-01 | Phase 15: central skills and project workspaces, by the user's specification; 15.0–15.3 and 15.5 done with fictional fixtures; 15.4 done for Azure DevOps through a browser (its API route and Jira pending); methodology v2.8, `technique-workspaces.md` v1.0, `technique-tickets.md` v1.1, `qa-ui.md` v1.2. Unit tests 941 → 1082. |
+| 2026-10-27 | The phase table brought up to date: 13.2–13.3 done and merged (PR #36); 11.8 in progress since 13.10.2026. |
+| 2026-11-01 | 14.1: `/analyze-tickets` and `adapters/tickets/`, specified in `docs/technique-tickets.md`; methodology v2.7. Validated with fictional fixtures; the real read of each service is pending. |
+| 2026-10-22 | 13.3: a project's Overview, credentials typed write-only into `.env`, notes in `notes/`; 6 new tests (861 → 867). |
+| 2026-10-22 | 13.2: a project's routes under `/api/p/<id>/` (an App and a Runner per project, one Gate), the page's address `#/p/<id>/test`, switching project; 4 new tests (857 → 861). |
+| 2026-10-21 | 13.1: the hub's discovery, the Projects screen, the pins and one run at a time on the computer (`runs.Gate`); 19 new tests (838 → 857). |
+| 2026-10-21 | Phase 13 (the hub) added by the user's decision: every project of `qa-workspaces/` in `qa-ui`, one run at a time on the computer, credentials typed write-only; 13.0 done (`docs/qa-ui.md` v1.1 §14). |
+| 2026-10-20 | 6.2: the repository made public by the user; the history rewritten to remove a real workspace's variable name (filter-repo, force-push of `main` with a lease, tree identical, denylist 0 hits); pull requests #18 and #29 still hold the old commits until GitHub Support purges them. |
+| 2026-10-17 | 12.6: the first real batches from `qa-ui` (a mobile workspace, a real phone, Windows) and the five gaps they showed, fixed for any project: library headers in other languages and the warning, only active modules suggested, exploratory charters on the app of a mobile project (methodology v2.6, technique-mobile v1.6), the module of a planned batch chosen in the page, the refused tools shown. 19 new tests (817 → 836). |
+| 2026-10-14 | 11.8, the agent step reproduced on this computer (the runner's flags, `login: skip`, 25 turns): `launch`, the notifications dialog, the onboarding, the 5 cases Bloqueado with evidence, the summary and `context.md`; `post-check` safe and `pr-body` right. Fixed from it: `workspace_ci.py prompt` gives forward-slash paths (on Windows the tool rules refused the backslash form; `qa-ui` already did so), and `post-check` counts only the files the run adds or changes (git status), not the whole history. |
+| 2026-10-14 | 11.8, local reproduction of the agent step: the local emulator stopped booting — after emulators stopped by force it waited for its crash-report consent dialog on the desktop. `setup_emulator.py` now sees "Showing crashdialog" in the emulator's output and stops at once with what to do (technique-mobile.md §1.1). |
+| 2026-10-14 | 11.8, 14th run: not started — the month's Actions minutes ran out (the spending limit at 0 stopped it, as intended), together with the framework's own CI. The framework's CI now runs once per branch (its pull request; `push` only on main) and cancels a superseded run; the CI README says how the minutes are shared. Merges without CI are checked locally (unit tests and the fictional golden). |
+| 2026-10-14 | 11.8, 13th run (`login: skip`, a pipeline check): every step green and the diagnostics artifact showed why no result: the agent (4 turns) tried to open the app with `cd …; adb shell monkey …; sleep 8; device.py dump | head`, denied by its tool rules, and stopped. New `device.py launch [--restart]` (opens the app, waits for the foreground and a stable screen, prints it); the prompt says each Bash call is one allowed command. |
+| 2026-10-14 | 11.8: what the pilot runs taught, for the next ones: the input `login: skip` (a pipeline check without the owner; the prompt's `{{login}}` tells the agent), a diagnostics artifact on every run (emulator, Maestro, agent, checks), and no pull request when the run log has no result (10 empty or login-Blocked pull requests were closed by hand). |
+| 2026-10-14 | 11.8, 12th run: the login helper flow passed on the runner and the issue was opened; then `remote_login.py wait` did not find it (GitHub's listing of open issues lags behind a new issue), so the batch was Blocked (login) before anyone could paste. `request` now leaves the issue's number in the runner's temp folder for `wait`, which falls back to searching for ~30 s. |
+| 2026-10-13 | 11.8, 11th run: adb found; the login helper flow failed because nothing opened the app on the runner (the workspace's flow now starts with `launchApp`, a workspace fix), and the message held only Maestro's debug-folder notice: a failed helper flow now names the step that failed first (`FAILED`, `Element not found`, …). |
+| 2026-10-13 | 11.8, 10th run: the run ended green through the fallback (the 5 cases Bloqueado, in the project's word): the login helper said 'adb not found' â the runner has the SDK but not adb on the PATH. `common.find_adb()` (the PATH, then `platform-tools` of ANDROID_HOME / ANDROID_SDK_ROOT / the default folders) for `device.py` and `run_mobile.py`. |
+| 2026-10-13 | 11.8, 9th run: disk freed (13 → 27 GB), the emulator booted in 76 s and build 21 installed; then the login helper refused to start (a password variable of `mobile.variables` not in the runner's `.env`) and the fallback wrote `Blocked`, not the project's word. A helper flow now needs only the variables it uses; `run_log.project_status()` gives the project's word for a meaning (`dashboard.states`, or the English word), used by `workspace_ci.py blocked` and `import-flows`. |
+| 2026-10-13 | 11.8, 8th run: with `config.ini` found and `-partition-size 3072` the emulator still asked for 7372.8 MB, so the size is not the AVD's data partition (#15 and #16 stay: harmless, and they keep a new AVD small); `mobile.yml` now frees disk first (.NET, Haskell, Boost, Swift, CodeQL; never the Android SDK, Java, Python or Node). A workspace takes it with `workspace_ci.py install --yes` and a push. |
+| 2026-10-13 | 11.8, 7th run: still 7372.8 MB needed (1.2 × the profile's 6 GB) with only `config.ini` changed; an AVD created in the run now also starts with `-partition-size 3072`, and the avd step says whether it found `config.ini`. |
+| 2026-10-13 | 11.8, 6th run: the AVD was found, then "Not enough space to create userdata partition" (7.35 GB free, 7.37 GB needed); a new AVD now gets `disk.dataPartition.size=3G` (technique-mobile.md §11.5). |
+| 2026-10-13 | 11.8, 5th run: `avdmanager` ignores `ANDROID_AVD_HOME` too; the avd step now looks for `<name>.ini` where recent cmdline-tools write it (`XDG_CONFIG_HOME`, `ANDROID_USER_HOME`, `~/.android`) and points the emulator there, and as a last resort writes the `.ini` in `avd_home()` from `avdmanager list avd`'s `Path:`. |
+| 2026-10-13 | 11.8, 4th run of the pilot: "Unknown AVD name" on the runner: a recent `avdmanager` follows `XDG_CONFIG_HOME` (set on GitHub's runners) and created the AVD in `~/.config/.android/avd`, where the emulator does not look; `setup_emulator.py` now sets `ANDROID_AVD_HOME` (its own `avd_home()`) for both while it runs. |
+| 2026-10-13 | 11.8, 3rd run of the pilot: the runner's emulator exited with code 1 while starting and `setup_emulator.py` threw its output away (`DEVNULL`); the emulator's output now goes to `<temp>/emulator-<avd>.log` and its last 25 lines are in the error, so a runner shows why. |
+| 2026-10-13 | 11.8, found on the runner (2nd run of the pilot): `validate_project.py --environment --strict --ci` required LibreOffice in the run job, which never applies its run log (`qa-apply.yml` installs it); with `--ci` the recalculation is now not required (technique-mobile.md §11.1 step 5). Before that, the 1st run stopped at the `qa-assistant` checkout: the read-only token had no repository selected (a setting, not a framework bug). |
+| 2026-10-13 | 11.8 fix: `workspace_ci.py install --yes` sets secrets only from a real interactive console (on Windows, stdin from NUL passed `isatty()` and `gh secret set` stored empty values from an agent's shell); otherwise it prints the commands for the user. README step 3. 6 new tests (792 → 798). |
+| 2026-10-13 | 11.8 prerequisite: `QA_MOBILE_SERIAL` / `QA_MOBILE_INPUT` override `mobile.serial` / `mobile.input` (`common.mobile_target`; technique-mobile.md v1.5 §1.2, §11.1), set by `mobile.yml` to the runner's emulator and `adb`, so a workspace configured for a physical phone with the driver runs unchanged on a runner. 4 new tests (788 → 792). |
+| 2026-10-13 | Fix found while merging phase 12 into 11.7 on Windows: `qa_ui/server.py` binds its port exclusively there (`SO_EXCLUSIVEADDRUSE`, no `SO_REUSEADDR`); before, a taken port gave no error and `test_qa_ui_server` hung forever (Linux CI unaffected). 788 tests. |
+| 2026-10-12 | 11.7 done: the pilot applied at the workspace's `/checkpoint` (with a correction batch: 5 cases had been set to Fail by their linked bug); three heuristics. |
+| 2026-10-12 | 11.7: the pilot batch ran on the phone through the driver (retest of 19 bugs on a new build); `device.py clear`; technique §1.2: turn off the service's floating shortcut, other apps are the person's steps. Checkpoint pending. |
+| 2026-10-12 | 11.7: the specification (technique-mobile.md v1.4 §1.2), `tools/android-driver/`, `scripts/build_driver.py` and `device.py` (`mobile.input: driver`, `swipe`, `back`) and `validate_project.py` (`mobile.input`, the driver on the device) done; 21 new tests (666 → 687); checked on the phone except `send`. |
+| 2026-10-12 | 11.7 redefined by the user: the pilot runs locally on the user's Android phone (no SIM; its vendor build blocks input injection, `adb install` and settings without one), through a companion accessibility-service driver; proof of concept on the phone (tap, swipe, back, Unicode text) passed. The runner pilot becomes 11.8, still postponed. 10.5 moved to the end of the project (user). |
+| 2026-10-08 | 12.1–12.5 done: `qa_ui/` (`intake.py`, `suggest.py`, `plan.py`, `workspace.py`, `runs.py`, `server.py`, the prompts and the page) and `python -m qa_ui <workspace>`; `ExcelAdapter.case_rows()`; `README.md`, `CLAUDE.md`, the `tests` hook. 100 new tests (666 → 766), golden unchanged. Validated against a fake `claude`; the CLI's flags, its event format and the asking prompt checked once against the real Claude Code. The first real batch and `pre-commit` with the personal denylist are left to the user (note of 12.5). |
+| 2026-10-08 | Phase 12 opened by the user's decision: `qa-ui`, a local web interface for a workspace (cases in, suggested types of test, batch plan, runs with Claude Code headless and the scripts, approvals, apply), after a visual proposal and a clickable prototype reviewed outside the repository. 12.0 done: `docs/qa-ui.md`; methodology v2.5 (§9.4: a run started from the interface is unattended, the approval happens in the interface); `CLAUDE.md` reference; `.qa-ui/` in the workspace's `.gitignore` template. Choices in the note of 12.0. |
+| 2026-10-04 | 10.6 done: `adapters/excel/add_cases.py` and `ExcelAdapter.add_cases()` (technique-excel.md v1.3 §4.1, methodology v2.4), `/generate-cases` step 10, the `rebuild_workbook.py` warning in `validate_project.py`; 32 new tests. Choices in the note of 10.6. |
+| 2026-10-04 | 10.6 opened (not started): the Excel adapter cannot add approved cases; found while confirming the `focus-not-visible` finding by hand on the practice site (a real WCAG 2.4.7 failure, not a false positive of the engine). |
+| 2026-10-04 | 11.7 postponed by the user's decision, like 10.5: no pilot now; remote execution stays available, validated only against fakes and the fictional golden; the first real project runs the checklist of 11.7 (and measures the optional AVD cache of 11.6) before relying on it. |
+| 2026-09-29 | 11.6 done: `docs/workspace/ci/pr-body.md` and `workspace_ci.py pr-body` (build, batch, a count per status and the cases not run, the proposed bugs with evidence links, the questions, the checks, the agent's summary, time and turns); `docs/workspace/ci/apply.yml` and `workspace_ci.py apply-merged` (on the push to `main` touching `runs/`: each run log applied with the project's adapter — LibreOffice on the runner for Excel, `apply --yes` for Jira / Azure DevOps —, the workbook or `tracker/` committed and pushed, the result commented on the pull request; a run log with `"proposed"` or `Question` left refused and named); the adapter-side check in both `validate_batch` (a `new_defect` with `"proposed"` is never applied nor sent), in `technique-excel.md` §4 and `technique-jira-xray.md` §2.6; `/checkpoint` step 9. Fictional golden OK. 6 new tests (628 → 634). The optional AVD cache stays for the pilot. Choices in the note of 11.6. |
+| 2026-09-29 | 11.5 done: `docs/workspace/ci/agent-prompt.md` (installed as `.github/qa/agent-prompt.md`: `/test-mobile` in conversational mode, results case by case with `run_log.py`, `Question` for a doubt, new bugs only as `"proposed": true`, never apply/send/git, the summary for the PR); the agent step of `mobile.yml` (Claude Code headless with the subscription token, `--max-turns`, `--permission-mode dontAsk`, tools limited to the framework's scripts, Read and writes in `runs/`, `evidence/`, `context.md`, no web tools, SIGINT at the time left); `workspace_ci.py prompt` and `post-check` (no `.env` value in the files to commit, `"proposed": true` enforced, the adapter's validation without applying). The CLI flags confirmed against the official docs (note of 11.5). 3 new tests (625 → 628). Choices in the note of 11.5. |
+| 2026-09-29 | 11.4 done: `docs/workspace/ci/mobile.yml` (`workflow_dispatch` with `batch`/`build`/`mode`; a `plan` job that reads `ci:` and refuses any runner but a standard one; checkout of the workspace and of `qa-assistant` with the read-only token; Python, Java, Maestro, the Android SDK's emulator and image, cached; KVM; the `.env` of the names in `ci.secrets` written from the Actions secrets and checked by `validate_project.py --environment --strict --ci`; `workspace_build.py fetch`; `setup_emulator.py` cold, headless, `swiftshader_indirect`; the login through the issue, Blocked when it fails; the flows; a branch `run/<batch>-<run id>` and the pull request) and `scripts/workspace_ci.py` (`install` — private repository, dry run, secrets typed by the user — `check`, and the workflow's steps `batch`, `write-env`, `blocked`, `import-flows`); `validate_project.py --ci`; `/plan-batch` saves `batches/<name>.yaml`. `tests/test_workspace_ci.py` (15) and 1 validation test (609 → 625). Choices in the note of 11.4. |
+| 2026-09-29 | 11.3 done: `scripts/remote_login.py` — `request` (the helper flow, then the issue "Login needed — <run id>" mentioning the allowed user) and `wait` (every 15 s up to `ci.login.timeout_minutes`; only that user's comment with a link of the project's hosts; masked, opened in-process, the comment deleted, the issue closed, the login screen checked; other comments reported without their text; timeout → exit 3, Blocked (login)). `tests/test_remote_login.py` with a fake GitHub, the fake device and a fake clock (10 tests, 599 → 609). Choices in the note of 11.3. |
+| 2026-09-29 | 11.2 done: `device.py` — `type`/`send --file <utf8.txt>`, text in chunks of 300 characters (adb calls and Maestro steps), the text inside the UTF-8 flow file instead of Maestro's command line, "IME is not active" retried once then ASCII through adb, `type --via`, `open_link()`; `run_mobile.py --helper flows/_<name>.yaml` (no result recorded, redacted); `scripts/run_log.py add` (one item per case, the vocabulary, the run block, a batch already applied refused with the name for the correction); `/log-bug` retest rule (and methodology §9.3), `/test-mobile` and the technique point to them. 15 new tests (`test_device.py`, `test_run_mobile.py`, `test_run_log.py`, `test_skills.py`; 584 → 599). Choices in the note of 11.2. |
+| 2026-09-29 | 11.1 done: `scripts/apk_manifest.py` (the APK's binary manifest in pure Python), `scripts/workspace_build.py` (`publish` — dry run, `--yes`, the release `build-<versionName>-<versionCode>` with the SHA-256 in its notes, `mobile.build` rewritten keeping the comments, a local commit; refusals: package, production build, public/internal repository, same tag with another hash — and `fetch` with the SHA-256 check and `$GITHUB_OUTPUT`); `setup_emulator.py` reads the versionCode without `aapt2` (no reinstall, no lost login) and boots cold when the snapshot is older than the build (`--cold`, `--gpu`, `--headless`); `tests/apk_kit.py` builds fixture APKs with a real binary manifest. 21 new tests (`tests/test_workspace_build.py` and `tests/test_setup_emulator.py`, 563 → 584). Choices in the note of 11.1. |
+| 2026-09-29 | 11.0 done: methodology v2.3 (§9.4 the approval of a remote run in the pull request and `"proposed": true`, §12.1 and the new §12.4 "Resuming on a runner", §14.2 the runner as an environment); `technique-mobile.md` v1.3 §11 Remote execution; `docs/workspace/ci/README.md` (settings, secrets, the no-cost rules); the `ci:` section in the template and in `validate_project.py` (standard runner only, limits, `ci.secrets` names, login mode and helper flow; plus `ci.login.hosts`, `user`, `screen_text`) and `mobile.build.version`. 4 new tests in `tests/test_validate_project.py` (559 → 563). Choices in the note of 11.0. |
+| 2026-09-29 | Phase 11 planned by the user's decision, from the first real mobile project run with the framework: remote execution on GitHub Actions (emulator on the runner, Claude Code headless for the conversational mode, builds as releases of the workspace's repository, manual login through an issue comment, results reviewed in a pull request and applied on merge); plus the lessons of that run for the driver (`type --file`, chunked `adb` text, helper flows), the run log helper, the retest rule of `/log-bug` and the stale-snapshot / reinstall trap of `setup_emulator.py`. |
+| 2026-09-29 | 10.5 postponed by the user's decision: no pilot on free instances; the adapters stay available, validated only against fakes and fictional goldens; the first real project runs the checklist of 10.5 before its first `--yes`. |
+| 2026-09-29 | 10.4 done: the skills use the tracker adapters — `/project-onboarding` (the `jira:` / `azure_devops:` section with the user: variable names only, the status/outcome map with `Blocked`/`N/A` asked, `id_source`, evidence, the Azure DevOps process and Test Configurations; then `check` and `import-cases`), `/checkpoint` (7a: `apply` dry run, the plan shown, `--yes` after approval, exit codes 0–5, the `run` block, `tracker/` committed), `/log-bug` (`bug-search` first, the user decides, `new_defect` / `bug` / `bug_status` in the run log), `/generate-cases` (cases file, `export-cases` dry run, `--yes`, final IDs), `/plan-batch` and `/run-batch` (`tracker/cases.json`, the tracker's IDs and map), `/end-session` (the records of what was sent against the run logs), `/dashboard` (Excel only, said clearly), `/test-api`; README. 7 new tests in `tests/test_skills.py` (552 → 559). The global copy of the skills is synced after the merge. Choices in the note of 10.4. |
+| 2026-09-29 | 10.3 done: the Azure DevOps Services back-end (`adapters/azure_devops/`: `check`, `import-cases`, `export-cases`, `apply`, `bug-search`), the endpoints confirmed against the public documentation (list in the note of 10.3) and the technique fixed first (v1.2: comments preview `7.1-preview.4`, bugs linked through the result's `associatedBugs`, points per suite, build in the run's name and comment, no dates, the run's marker in its comment, the state change right after the new bugs, full area paths); `azure-devops` in `IMPLEMENTED` and the "no adapter yet" warning removed (`validate_project.py`, methodology §1.1/§4.2, template, README); golden `tests/golden/azure_devops/` (5 scenarios, hand-written requests) and `tests/test_azure_devops_adapter.py` with a stateful fake Azure DevOps (round trip, exit codes 0–5, uncertain writes, continuation tokens, relaxed passes, Basic refused); `CLAUDE.md`. Tests 513 → 552. Choices and what only the pilot confirms in the note of 10.3. |
+| 2026-09-28 | 10.2 done: the Jira Cloud + Xray Cloud back-end (`adapters/jira/`: `check`, `import-cases`, `export-cases`, `apply`, `bug-search`), the endpoints confirmed against the public documentation (list in the note of 10.2) and the technique fixed first (v1.2: multipart import for the first chunk, the build in the summary, `getTests` by issue ids, the plan status through `status(testPlan:)`, rich text of new tests through Jira, final IDs in `ids.yaml`); `jira` in `IMPLEMENTED` (`validate_project.py`: the section required, no "no adapter" warning); golden `tests/golden/jira/` (5 scenarios, hand-written requests) and `tests/test_jira_adapter.py` with a stateful fake Jira + Xray (round trip, exit codes 0–5, the uncertain write, pagination, re-authentication, relaxed passes); `CLAUDE.md`, the template. Tests 479 → 513. Choices and what only the pilot confirms in the note of 10.2. |
+| 2026-09-28 | 10.1 done: the decisions the user delegated (Blocked/N/A unmapped → not sent, `Question` still refused; `id_source` key/id by default; screenshots only with `text+screenshot`; Azure DevOps needs Agile or Scrum, platform → Test Configuration table; endpoints confirmed in 10.2/10.3) recorded in the techniques (v1.1), the template and Phase 10 first; then `adapters/tracker/` (configuration and its validation, credentials by name, stdlib HTTP client with retries, Retry-After, backoff, re-authentication, pagination, redaction and `--record`; the record of what was sent, the ID cache, `cases.json`; the batch validation with the `run` block and the status map; the command line with the dry run, `--yes`, `--now` and exit codes 0–5; the fake transport), stubs for `adapters/jira` and `adapters/azure_devops` (exit 4 until 10.2/10.3), `validate_project.py` checks the tracker's section, `docs/workspace/gitignore` ignores `tracker/recordings/`, `CLAUDE.md` documents the command. `tests/test_tracker_config.py`, `test_tracker_http.py` (with a local server on 127.0.0.1), `test_tracker_cli.py` and 1 new validation test (408 → 479). Choices in the note of 10.1. |
+| 2026-09-28 | Phase 10 planned by the user's decision (revises 7.7: `jira` and `azure-devops` get adapters, Jira with Xray and Azure DevOps Test Plans + Bugs, four directions, golden with recorded fictional responses, pilot on free instances). 10.0 done: `docs/technique-jira-xray.md` (with the common contract of the tracker adapters) and `docs/technique-azure-devops.md`; methodology v2.2 (§1.1, §2, §4 step 7, §4.2, §7.1, §9.4); `CLAUDE.md` references; the template's `jira:` and `azure_devops:` sections. Decisions in the note of 10.0. |
+| 2026-09-28 | 9.6 done: pilot from a fresh clone (private remote, device driver, adapter, push); `/checkpoint` now commits the workbook after applying; 6 anonymised heuristics. Phase 9 done. |
+| 2026-09-28 | 9.5 done: `docs/workspace/resume.md` (the steps of methodology §12.3, linked from §12.3 and `/project-onboarding` 8c) and `validate_project.py --environment [--strict]` (reuses `find_soffice`, `setup_emulator.find_tools`, `sync_skills.compare` and the doctor's browser folders, each behind a function the tests replace); 11 new tests in `tests/test_validate_project.py` (397 → 408). Decisions in the note of 9.5. |
+| 2026-09-28 | 9.4 done: `docs/workspace/gitignore` (template) and `scripts/workspace_git.py` (`init`, `status`, `remote --create/--set`, `push`; `gh` through one function the tests fake); `common.variable_names()` (the `*_var` keys and `variables` lists of `project.yaml`) for `.env.example`; `validate_project.py` warns (no remote, commits not pushed, `.env.example` missing a variable, files over 50 MB) and has problems for `.env` tracked and a public remote; `/project-onboarding` step 8c (init, the remote proposed and created only with a yes) and `/checkpoint` 6/6a (status after the commit, push only when the user says so). `tests/test_workspace_git.py` (22) and 3 new validation tests, all in temporary repositories with git's hook variables dropped and a temporary global configuration (372 → 397 tests). Decisions in the note of 9.4. |
+| 2026-09-28 | 9.3 (skills and validation): `/test-mobile` picks the mode per batch and writes it with the reason at the top of the run log (`"mode"`); conversational mode with `setup_emulator.py` and `device.py check` first, a `send --capture <case>_t<N>` per turn, the screenshot read whenever the dump may miss content, one note per turn, guardrail answers judged by the spec's text; assisted mode (the user taps, the driver only reads). `/project-onboarding` asks for the target (`mobile.serial`, or `mobile.avd` + `mobile.image` — the plan's `mobile.device`), `mobile.build`, `mobile.permissions` and, for conversational apps, `send_label`, `ignore_labels`, `browser`, and shows `setup_emulator.py --dry-run`. `validate_project.py` checks `serial`, `send_label`, `ignore_labels`, `evidence_batch` (a quoted folder name: an unquoted date is a YAML integer and is refused) and `browser` (371 → 372 tests); the template has them as comments. Global copy of the skills still to sync. |
+| 2026-09-28 | 9.2 done: `scripts/setup_emulator.py` (SDK, AVD, boot, build checked against `mobile.build.sha256`, ARM-only native libraries on an x86_64 image with root, permissions, Chrome's first run; `--dry-run`, production builds refused) and the new `mobile:` keys (`avd`, `image`, `build`, `permissions`) in `validate_project.py` and the template; `tests/test_setup_emulator.py` with a fake SDK and fixture APKs built in the test (26 tests, 345 → 371). Decisions where the spec was open: default AVD `qa-<project>`; a missing `build.sha256` installs with a `skip` line that prints the hash to record; the dry run still does the local checks (SDK folders, SHA-256, the APK's libraries); a device step that fails stops the run (exit 3). Not run against a real SDK or emulator. |
+| 2026-09-28 | 9.1 done: `scripts/device.py` (check, dump, tap, type, send, shot, link) with the foreground guard, `.env` values refused in typed text and the link never printed; `tests/test_device.py` with a fake `adb` (29 tests, 316 → 345). Checked read-only on a real emulator: `check`, the guard refusing another app, and a real uiautomator dump parsed. Found on the way: committing from a linked git worktree, the `tests` hook failed in `test_validate_project` and `test_migrate_workspace` (git's hook variables, e.g. `GIT_DIR`, are absolute there and the `git -C <tmp>` of the scripts read this repository); both modules now drop them while they run. |
+| 2026-09-28 | Phase 9 planned by the user's decision, from a real mobile pilot run with helpers outside the framework: device driver and conversational mode, reproducible emulator, one git repository per workspace with a private remote, resume on another computer. |
+| 2026-09-23 | Initial version |
+| 2026-09-24 | General review (`994fa8b`): the denylist now reads Office files and file names (before, a client `.xlsx` got past the guard; history checked, clean); the adapter validates the whole batch before writing (`validate_batch`, code 4 in `apply`) and accepts an existing `bug`; a single run log format (methodology §7.1 = technique-excel §4); 27 `unittest` tests in CI and pre-commit (including the dashboard check of 5.1); ruff in pre-commit; skills aligned with the flow. |
+| 2026-09-24 | A batch edited after being applied: before, it was applied again (different hash) and duplicated notes and defects; now the control sheet keeps the `batch_id` (file name) and the adapter refuses it (code 4). Checked: `main` cannot be protected (private repository, Free plan: API 403); the CI is a warning after the push, not a barrier — to decide in 6.2. |
+| 2026-09-24 | Summary vs direct count: optional block `excel.summary`; `check_summary()` compares the summary's recalculated values with the case-by-case count (per area, status, total and total row); code 5 in `apply`, an alert in the dashboard, part of the golden. The totals are never read from the summary. Detected in the tests: a formula counting the wrong column and a case outside the fixed range (the demo uses `A2:A200`). |
+| 2026-09-24 | Definition of "run" (user decision): every case outside `Not run`; N/A and Blocked count as run; % run = run / total. Written in methodology §16.3; the demo's summary formula aligned (before, it excluded the N/A) and the workbook regenerated (only those formulas and the note changed). |
+| 2026-09-24 | Check of the summary's % run (`summary.percent_column` + `not_run_status`): compares with (total − not run) / total, fraction or percentage points, strict tolerance by default (0.001 pp); the dashboard refuses a `not_run_status` different from its pending status. Demo configured. |
+| 2026-09-24 | detect-secrets: the CI's (Linux, Python 3.12) flagged a password key followed by a variable name in an inline YAML map that the local one (Windows, Python 3.14) let through, with the same version and baseline; obvious secrets are caught by both. The content fixed (keys `user_var`/`password_var`); exact cause to be found. In workspaces without CI, the local guard is the only barrier. |
+| 2026-09-24 | **Cause of the detect-secrets difference found**: version 1.5.0 opens the files with `open()` without an encoding; on Windows (cp1252) a UTF-8 file with certain characters (e.g. "Á", bytes C3 81) raises `UnicodeDecodeError` and is **skipped silently**, as if it were binary (6 files of the repository, including the methodology). It was not Python 3.14 nor the YAML. Fixed: a local hook with the same version in UTF-8 mode (`python -X utf8`), the same id for the CI; `tests/test_guards.py` prevents going back. The history sweep of 6.2 was redone in UTF-8: 1 finding, the known false positive (a variable name in the old version of the demo's `project.yaml`). |
+| 2026-09-24 | CI: runners fixed at `ubuntu-24.04` (`3f72fcd`) before the move of `ubuntu-latest` to Ubuntu 26 (19.10.2026); the 5 jobs passed (run 36047318268). Note in 4.1. |
+| 2026-09-24 | General review 2 (test everything → analysis → fixes → retest): the **inspector** left the defects sheet without a proposal when every defect was open (a view with the same IDs; it happened in the demo), now it breaks the tie by the header row and the number of columns, with `tests/test_inspect.py` (there were no tests); **console**: on Windows, the output read through a pipe came in cp1252 and accents arrived garbled at Claude Code, now every entry point writes in UTF-8 (`tests/test_console.py`); **validate_project**: an environment without a URL passed (the template's case), URLs of `api`/`accessibility` outside the declared environments or from production become a problem, and it warns if `.env`/`.api-session.env`/`dashboard.html` are not in the `.gitignore` of a workspace with git; **recalculation**: on Linux the timeout only killed `soffice` and the wait stayed stuck on the child, now it kills the process group (`tests/test_recalc.py`); `api_request --output` relative to the workspace, as in the other scripts; `scripts/sync_skills.py` for the global copy of the skills (before, manual, unchecked); the pre-commit `tests` hook also for skills, `CLAUDE.md`, demo and template; docs aligned with what exists (`qa_core`, CLI `qa` and `executor-web` marked as planned; codes 4 and 5 of `apply` in the Excel technique); `docs/heuristics.md` created with the heuristics of the demo's 3 bugs. 95 → 117 tests. |
+| 2026-09-24 | General review 2 in `a57ed19`. Phase 7 (closing the framework) added with what is missing for v1.0: CI on Linux, pilot, real golden, protected `history/`, fixed versions, reproducible demo, scope decisions. |
+| 2026-09-24 | 7.1 done: green CI on Linux after the general review 2 (run 36053764682), with the recalculation timeout checked on Ubuntu. |
+| 2026-09-24 | 7.4 (`3563f24`), 7.5 (`0a61bc6`) and 7.6 (`ced85fc`) done: `history/` protected in the workspace's `.claude/settings.json`, fixed versions (Playwright MCP and Python dependencies), a reproducible demo with a test in the `golden` job. |
+| 2026-09-24 | 7.7 done (`3ffbb62`), user decisions: no `qa_core`/CLI `qa`; `executor-web` postponed and reassessed in the pilot; `jira` and `azure-devops` as manual logging (methodology §4.2). 7.2 got the steps of reassessing `executor-web` and confirming the protection of `history/`. |
+| 2026-09-24 | 7.8 done (`799e068`): `scripts/common.py` with the reading of `project.yaml` and `.env` and the redaction, without a change of behaviour. The 1st commit attempt was blocked by detect-secrets (a false positive: the names of the redaction constants in a note of this plan); the text fixed, without an allowlist. |
+| 2026-09-24 | `run_mobile.py`: a flow given that does not exist becomes a usage error (code 2, nothing run, with suggestions of the same case's flows), instead of `Blocked` "the flow did not run", which looked like an environment problem. Each flow can be a path (current folder, workspace or flows folder) or the case ID (the only `<ID>_*.yaml`). 3 new tests; skill `/test-mobile` and `CLAUDE.md` updated. |
+| 2026-09-24 | 7.9 asked for by the user: its criteria were not met yet (7.2 and 7.3 missing). By the user's decision, the 1st criterion of 7.3 was brought forward, the real golden with `--dir`/`QA_GOLDEN_DIR` (`e74c281`), and v1.0 is left for after the pilot. |
+| 2026-09-27 | 8.11 closed: CI green; the history rewritten to remove a client's short name (force push of `main`, `feat/login` and the tags, by the user's decision), and the name added to the denylist. |
+| 2026-09-26 | 8.11: everything in English (docs, skills, scripts, adapter, tests, demo), `scripts/migrate_workspace.py`, the practice workspace converted with its real golden unchanged. |
+| 2026-09-26 | 8.11 redefined by the user's decision: everything in English, names included, with a migration script for the workspaces. |
+| 2026-09-26 | 8.17 done: `focus-not-visible` (problem) when the element's screenshot is identical with and without focus; `needs-human` stays only where the screenshots do not decide; a new run on the practice site with the finding on the 4 pages and in the 3 engines. |
+| 2026-09-26 | 8.17 defined (what was left from the first real use): `focus-visible` decided by comparing pixels; checked on the practice site's public login, identical pixels with and without focus in the three engines. |
+| 2026-09-26 | 8.16: fixes from the first real use (SameSite false positive in Firefox/WebKit, SPA pages as broken links) and `visual` out of `full` (user decision). |
+| 2026-09-26 | `docs/qa-audit.md` §12: scripted flows in the engine refused (they stay in the workspace's specs, audited with `qa-audit check`); active security only with a concrete need (user decisions). Next: use the engine on the public practice site before new features. |
+| 2026-09-26 | 8.15 (`qa-audit check`, auditing states in the middle of N2 specs) done by the user's decision (option c). |
+| 2026-09-26 | `qa-audit` 0.2.0 (tag `qa-audit-v0.2.0`): 8.5–8.10 and 8.12–8.14; `CHANGELOG` reorganised (Added / Changed / Fixed). |
+| 2026-09-26 | 8.14 (several browsers in one run) done by the user's decision; performance out of the comparison (noise between browsers). |
+| 2026-09-26 | 8.13 (sitemap discovery) done by the user's decision; off by default (`--sitemap`). |
+| 2026-09-26 | 8.12 (saved sessions, `storage-state`) done by the user's decision; `/audit-accessibility` now runs on `qa-audit` and `tools/a11y/` is retired (notes of 8.10). |
+| 2026-09-26 | 8.10 (login) merged into `main` after the pilot (branch `feat/login`, green CI). |
+| 2026-09-25 | 7.9: **v1.0** of the workspace layer (tag `v1.0`); README with the final state. |
+| 2026-09-25 | Pilot (2.4 / 7.2) on a public practice site, by the user's decision (no access to company projects): batch applied, real golden OK, lessons incorporated (`--isolated`, `--secrets`, the `.mcp.json` warning in `validate_project`, the golden's `label`, the `commit-msg` guard). |
+| 2026-09-25 | User decisions: v1.0 is only the workspace layer (`qa-audit` has its own version); translation (8.11) not now; the detect-secrets exception kept and explained in `axe.yaml` itself. |
+| 2026-09-25 | 8.10 (login `form` and `manual`, `crawl.pages`) by the user's decision; `storage-state` left for later; the translation becomes 8.11. |
+| 2026-09-25 | User decision: the detect-secrets exception is kept (allowlist pragma only on the two hash lines of `src/qa_audit/modules/accessibility/vendor/axe.yaml`; a test prevents it anywhere else). Public integrity keys, not secrets; no file excluded from the sweep. |
+| 2026-09-25 | 8.9 done: install scripts, user guide, fictional example, `install` job in CI. |
+| 2026-09-25 | 8.8 done: visual module; baselines outside any repository and the `qa-audit baselines` command. |
+| 2026-09-25 | 8.7 done: functional module; forms submitted only with `--allow-submit` and a listed form. |
+| 2026-09-25 | 8.6 done: performance module with the web.dev thresholds and a metrics table; order of the modules per page. |
+| 2026-09-25 | 8.5 done: passive security module; `doctor` tests each browser's cryptography. |
+| 2026-09-25 | Phase 8 (`qa-audit`) added by the user's decision: an automated audit engine alongside the workspace layer, in English, a private and proprietary repository; revises decision 7.7 about `qa_core`/CLI. Specification in `docs/qa-audit.md`. |

@@ -1,0 +1,292 @@
+project: ""
+company: ""
+environments:
+  test: ""
+roles: []
+tracker: ""          # excel | jira (with Xray) | azure-devops (Test Plans + Boards): each has its adapter; linear: needs a
+                     #   linear source in tickets:, read only, results and bugs passed by hand (methodology 4.2)
+bug_format: ""
+resolved_bugs: "remove"      # or "archive"
+evidence: "text"             # or "text+screenshot"
+modules: [functional-web]     # closed list (methodology 4.1): functional-web | exploratory | api | accessibility | mobile
+run_log: "runs/"             # folder of the session's run log (never history/, which is immutable)
+# workspace:                  # (opt.) identity (docs/technique-workspaces.md 4.1); the name in project: is informative only
+#   id: ""                     # stable id, lower-case letters, digits, '.', '_' or '-'; unique among your workspaces
+#   kind: "real"               # real | simulation (copies for simulating live under ~/qa-simulations/)
+# policy:                      # (opt.) decisions the code checks (docs/procedures/approvals.md); needs workspace:
+#   approvals:
+#     run: per-platform        # per-platform | with-request (default): the run authorised per platform, env, build, plan
+#     plan: required           # required | with-request (default): the plan's coverage approved per batch (no run)
+# report:                      # (opt.) /qa-report: which batches belong to which platform, when the run block has no
+#   platforms:                 # "platform" (scripts/qa_report.py); a batch that matches none is reported as unknown
+#     android: ["batch_android_*"]
+#     ios: ["batch_ios_*"]
+
+# api: only with the api module active (docs/technique-api.md). Never credential values: only variable names.
+api:
+  base_url: ""                 # base URL of the TEST environment (relative paths of api_request.py)
+  contract: ""                 # (opt.) OpenAPI or published documentation: the source of the expected result
+  auth: ""                     # bearer | basic | cookie | api-key | none
+  credentials: {}              # role -> {user_var: VAR_NAME, pass_var: VAR_NAME} (names of .env variables)
+
+# accessibility: only with the accessibility module active (docs/technique-accessibility.md).
+accessibility:
+  standard: "WCAG 2.1 AA"      # WCAG 2.0 AA | WCAG 2.1 AA | WCAG 2.2 AA
+  browser: "chromium"          # chromium | firefox | webkit (browsers of the qa-audit engine; see qa-audit doctor)
+  login: {}                    # (opt.) {url, user_field, pass_field, button, user_var, pass_var}
+                               #   + (opt.) success_url (regex) or success_selector (CSS); by default: the URL leaves the login page
+  pages: []                    # [{name, url, login: true|false}] -- only URLs of the test environment
+  audit_error_pages: false     # (opt.) true: audit the declared pages that answer 4xx but show
+                               #   content (an SPA that answers 404 to a direct link); the report names them
+
+# tickets: (opt.) what /analyze-ticket reads (docs/technique-tickets.md section 2), independent of tracker:. Without
+# it, a jira or azure-devops tracker's section is used. Only NAMES of .env variables, never values.
+# tickets:
+#   sources:
+#     boards: {service: "azure-devops", access: "api", organization_url: "", project: "", pat_var: "", team: ""}
+#     issues: {service: "jira", access: "api", site: "", project_key: "", user_var: "", token_var: ""}
+#     # access: "browser" needs no token: the logged-in session of a browser (section 4.3)
+#   scopes:                    # what "the current sprint" and "my tickets" mean here: never guessed
+#     current-sprint: {source: "boards", current_iteration: true}
+#     mine: {source: "boards", query: ""}
+#   limits: {max_depth: 2, max_items: 30, max_comments: 200, max_history: 500}
+#   cases: {link_fields: []}   # columns (Excel) or keys (tracker/cases.json) that name a case's ticket, e.g. ["Ticket"]
+
+# mobile: only with the mobile module active (docs/technique-mobile.md).
+mobile:
+  platform: ""                 # android | ios | web (Maestro Web, beta)
+  flows: "flows"               # folder of the Maestro flows in the workspace; one per case: TC-MOB-<n>_<name>.yaml
+  variables: []                # .env variables the flows use as ${MAESTRO_<VAR>}
+  # (opt.) Android target, read by scripts/device.py and scripts/setup_emulator.py (technique-mobile.md §1.1):
+  # app_id: ""                 # the app under test, e.g. com.demoshop.app
+  # avd: ""                    # AVD name (default: qa-<project>)
+  # image: "system-images;android-35;google_apis;x86_64"   # Google APIs (has root); a Play Store image has none
+  # session: {signed_in: [], signed_out: []}   # (opt.) texts that say, on the screen, whether the app has a session: device.py check says confirmed, needed or unknown
+  # build: {source: "", sha256: "", version: ""}   # the INTENDED build: where it comes from (APKs are never committed: e.g.
+  #                            #   "release build-1.4.0-140", written by scripts/workspace_build.py publish), its SHA-256 and
+  #                            #   version. The observed build is read from the device; the run's is in the run log (technique-mobile.md §1.4)
+  # permissions: {grant: [], revoke: []}   # e.g. grant: [android.permission.POST_NOTIFICATIONS]
+  # serial: ""                 # a real device or a running emulator (default: the only device connected)
+  # (opt.) conversational mode (scripts/device.py, technique-mobile.md §4.1):
+  # send_label: "Send"         # label of the send control (text or list)
+  # ignore_labels: []          # the app's chrome, dropped from what `send` prints
+  # evidence_batch: ""         # folder under evidence/ (default: today, YYYYMMDD)
+  # browser: ""                # package that opens login links, e.g. com.android.chrome
+
+# ci: (opt.) remote execution on a GitHub Actions runner of the workspace's private repository
+# (docs/technique-mobile.md §11, docs/workspace/ci/README.md). Only NAMES of .env variables, never values.
+# ci:
+#   runner: "ubuntu-24.04"       # a GitHub-hosted STANDARD runner (ubuntu-24.04, ubuntu-22.04, ubuntu-latest); larger runners are paid: refused
+#   timeout_minutes: 60          # the job's time limit (free minutes are limited; each job is rounded up to the minute)
+#   max_turns: 150               # the agent's turn limit (Claude Code headless, conversational mode)
+#   secrets: []                  # .env variables the runner needs, each an Actions secret with the same name, e.g. [SHOP_APP_USER]
+#   login:
+#     mode: "none"               # manual-issue (the owner pastes a login link in an issue) | none
+#     flow: ""                   # with manual-issue: the helper flow that asks for the link, e.g. flows/_request_link.yaml
+#     timeout_minutes: 30        # how long to wait for the comment; then the batch is Blocked (login)
+#     hosts: []                  # (opt.) hosts a link may have besides those of environments, e.g. [auth.demoshop.example]
+#     user: ""                   # (opt.) GitHub login allowed to paste it (default: the repository's owner)
+#     screen_text: ""            # (opt.) a text only the login screen shows, to check the app left it
+
+# dashboard: meaning of each case status in the dashboard (scripts/build_dashboard.py, plan 5.1).
+# (opt.) Types: pending | ok | fail | blocked | na. "Run" = cases outside pending.
+# Without this section, the 1st status of excel.cases.statuses counts as pending and the others are neutral.
+dashboard:
+  states: {}                 # e.g. {"Not run": pending, "Pass": ok, "Fail": fail, "Blocked": blocked, "N/A": na}
+
+# ---------------------------------------------------------------------------
+# (opt.) output: what the scripts print. Defaults (framework): a short card; the complete text with --detail.
+# Errors, blocks, caveats and decisions are never dropped by a limit; a notice that does not change is shown once.
+# Order of precedence: the command's --brief/--detail, QA_OUTPUT (brief|normal|verbose), this section, the defaults.
+# ---------------------------------------------------------------------------
+# output:
+#   terminal: brief          # brief | normal | verbose (normal and verbose print the complete text)
+#   max_cols: 100            # width of a card line (at least 40)
+#   max_lines: 12            # information lines of a card (at least 3)
+#   truncate: warn           # warn | never: a value is never cut without saying where it is complete
+#   detail_files: true       # write the file with the complete values and cite its path
+#   reports: [summary, technical]
+
+# ---------------------------------------------------------------------------
+# (opt.) specs: the functional specification the skills read (docs/technique-specs.md). Without this section
+# nothing changes. A private location (a shared link, a key) is never written here: keep it in .env and name the
+# variable in location_var.
+# ---------------------------------------------------------------------------
+# specs:
+#   kind: artifact             # artifact | git | export
+#   location_var: ""           # name of the .env variable with a private location; or location: "<repository or folder>"
+#   ref: ""                    # (git) branch or commit
+#   index: "_index.md"
+#   global_rules: ""           # (opt.)
+#   divergences: ""            # (opt.)
+#   divergence_prefixes: []    # (opt.) e.g. [DIV-M-, DIV-S-]
+#   changelog: ""              # (opt.)
+#   rule_id: ""                # (opt.) regular expression of the stable rule id
+
+# ---------------------------------------------------------------------------
+# excel: layout of the workbook, read by the adapter (adapters/excel/base.py).
+# Fill in ONLY when tracker: "excel". Never guess: /project-context (onboarding)
+# runs `python -m adapters.excel.inspect <workbook>` and confirms each value
+# with the user. Filled example (fictional): adapters/excel/example.yaml
+# (req.) = required; (opt.) = optional, the line can be deleted.
+# ---------------------------------------------------------------------------
+excel:
+  file: ""                     # (req.) path of the workbook, relative to this project.yaml
+
+  cases:
+    sheets: {}                 # (req.) case ID prefix -> sheet, e.g. {"TC-SHOP-": "Shop"}
+    header_row: 1              # (opt.) header row in the case sheets
+    columns:
+      id: ""                   # (req.) column with the case ID
+      status: ""               # (req.) column with the case status
+      actual_result: ""        # (opt.) only used in the sheets where it exists
+      notes: ""                # (opt.) session notes; only used in the sheets where it exists
+    statuses: []               # (req.) valid case statuses, exactly as in the workbook
+    fields: {}                 # (rec.) model field -> column: add-cases (technique-excel.md 4.1; title required there),
+                               #   the library and the runs (title, expected, steps, preconditions, role, ...), e.g.
+                               #   {title: "Title", steps: "Steps", expected: "Expected Result"}; the column names stay
+                               #   in the workbook's language. Unmapped, only a recognised header is read
+                               #   (adapters/case_headers.py); validate_project.py warns without title and expected
+    new_status: ""             # (opt.) status of a case added by add-cases (default: the 1st of statuses)
+
+  defects:
+    sheet: ""                  # (req.) sheet with the full register of defects
+    header_row: 1              # (opt.)
+    id_format: ""              # (req.) ID format with {n} in place of the number, e.g. "BUG-{n}"
+    columns:
+      id: ""                   # (req.) column with the defect ID
+      status: ""               # (req.) column with the defect status
+      case: ""                 # (opt.) column with the related case(s); used in the cross-check
+      severity: ""             # (opt.)
+      priority: ""             # (opt.) used to sort the active view
+      reported_by: ""          # (opt.)
+      report_date: ""          # (opt.) filled with the day's date (YYYY-MM-DD)
+    batch_fields: {}           # (opt.) defect key in the batch -> column, e.g. {title: "Summary", description: "Description"}
+    defaults: {}               # (opt.) defect key in the batch -> value used when the batch does not bring it
+    reported_by: ""            # (opt.) value of the reporter column (default "Automated QA")
+    statuses: []               # (req.) valid defect statuses
+    closed_statuses: []        # (opt.) statuses that take the defect out of the active view (resolved_bugs rule)
+    initial_status: ""         # (req.) status of a new defect; must be in statuses
+    priorities: []             # (opt.) order of the priorities, highest first
+
+  summary:                     # (opt.) totals sheet with formulas, checked against the direct count
+    sheet: ""                  #   (technique-excel.md section 5); delete the block if the workbook has no summary
+    header_row: 1
+    area_column: ""            # header of the column with the name of each case sheet (one row per sheet)
+    total_column: ""           # (opt.) header of the column with the area's total number of cases
+    total_row: ""              # (opt.) text of area_column in the totals row, e.g. "Total"
+    status_columns: {}         # (opt.) status -> header, only when the header is not the status name
+    percent_column: ""         # (opt.) header of the % run: (total - not run) / total (methodology 16.3)
+    not_run_status: ""         # (req. with percent_column) status that counts as not run
+    percent_tolerance: 0.001   # (opt.) in percentage points; only raise it if the summary rounds
+
+  active_view:                 # (opt.) sheet with the list of active defects, regenerated; delete the block if it does not exist
+    sheet: ""
+    header_row: 1              # the rows above this one stay untouched; the data starts on the next one
+    columns: {}                # view header -> defects column (equal headers do not need to be here)
+    sort_by: ""                # (opt.) defects column used as the 2nd sorting criterion
+    summary:                   # (opt.) cell with a summary text; delete if it does not exist
+      cell: ""                 # e.g. "A2"
+      template: ""             # e.g. "{open} open, {closed} closed, {severity[High]} of High severity, {date:%d.%m.%Y}"
+
+  notes:                       # (opt.) text added to the case's notes, after the session's label
+    result: "Result: {result}"             # used in the sheets without an actual_result column
+    new_defect: "New defect: {id}."
+    existing_defect: "Linked defect: {id}."   # batch item with "bug" (existing defect)
+
+  batch_control:
+    sheet: "_qa_batches"       # (opt.) hidden sheet where the adapter records the batches applied
+
+  recalc:
+    mechanism: "libreoffice"   # (opt.) "libreoffice" or "excel-com" (Windows with desktop Excel only)
+    timeout: 60                # (opt.) seconds
+
+# ---------------------------------------------------------------------------
+# jira: Jira Cloud + Xray Cloud, read by the tracker adapter (docs/technique-jira-xray.md;
+# built in plan 10.2). Uncomment ONLY when tracker: "jira". Only NAMES of .env
+# variables, never values. /project-context (onboarding) fills it in with the user and runs
+# `python -m adapters.tracker <workspace> check`. Fictional values: the Demo Shop.
+# ---------------------------------------------------------------------------
+# jira:
+#   site: ""                     # (req.) e.g. https://demo-shop.atlassian.net (no path)
+#   project_key: ""              # (req.) e.g. DS
+#   user_var: ""                 # (req.) variable with the account's e-mail
+#   token_var: ""                # (req.) variable with the Atlassian API token
+#   xray:
+#     base_url: "https://xray.cloud.getxray.app"   # (opt.) the Xray region's host
+#     client_id_var: ""          # (req.) variables of the Xray API key
+#     client_secret_var: ""      # (req.)
+#   cases:
+#     issue_type: "Test"         # (opt.)
+#     jql: ""                    # (opt.) tests import-cases reads (default: project + issue_type)
+#     id_source: "key"           # key (default: the issue key is the case ID) | field | label, for projects with own IDs
+#     id_field: ""               # with field: e.g. customfield_10050
+#     id_label_prefix: ""        # with label: e.g. "qa-id-"
+#     folder: ""                 # (opt.) Xray test repository folder of new tests
+#     fields: {}                 # model field -> Jira field; "labels:<prefix>" for labels (technique section 1.1)
+#   results:
+#     statuses: {}               # (req.) EVERY status of the project -> Xray status, or "skip"/empty = not sent
+#                                #   (stays in the run log, not an error); never Question; a status missing here is refused.
+#                                #   Blocked and N/A have NO default: asked per project (a custom Xray status or ABORTED),
+#                                #   otherwise skip. e.g. {"Pass": PASSED, "Fail": FAILED, "Not run": TODO, "Blocked": skip, "N/A": skip}
+#     test_plan_key: ""          # (opt.) e.g. DS-10
+#     summary: "{batch_id} · {environment} · {build}"   # (opt.) summary of each Test Execution
+#     attach_evidence: false     # (opt.) off by default; screenshots go only with evidence: "text+screenshot"
+#   bugs:
+#     issue_type: "Bug"          # (opt.)
+#     fields: {}                 # model field -> Jira field (title, description, area, feature, sub_area, platform, role, ...)
+#     defaults: {}               # (opt.)
+#     open_jql: "statusCategory != Done"   # (opt.) open bugs in the duplicate search
+#     link_type: ""              # (opt.) issue link Bug -> Test
+#     statuses: []               # (opt.) statuses a retest may move a bug to (resolved_bugs rule)
+#     priorities: []             # (opt.) priorities a new_defect may have (checked before any request)
+
+# ---------------------------------------------------------------------------
+# azure_devops: Azure DevOps Services (Test Plans + Boards), read by the tracker adapter
+# (docs/technique-azure-devops.md; built in plan 10.3). Uncomment ONLY when
+# tracker: "azure-devops". Only NAMES of .env variables, never values. The project must use the
+# Agile or Scrum process (Basic has no Bug work item type: `check` refuses it). /project-context (onboarding)
+# fills it in with the user and runs `python -m adapters.tracker <workspace> check`. Area and
+# iteration values are full paths of the project (e.g. "Demo Shop\\Checkout", as in YAML a quoted "\\" is one backslash).
+# ---------------------------------------------------------------------------
+# azure_devops:
+#   organization_url: ""         # (req.) e.g. https://dev.azure.com/demo-shop
+#   project: ""                  # (req.) e.g. Demo Shop
+#   pat_var: ""                  # (req.) variable with the personal access token
+#   api_version: "7.1"           # (opt.)
+#   cases:
+#     work_item_type: "Test Case"   # (opt.)
+#     plan_id: 0                 # (req.) test plan of the cases and results
+#     suite_ids: []              # (opt.) default: every suite of the plan
+#     new_cases_suite_id: 0      # (req. for export-cases) static suite of new cases
+#     area_path: ""              # (opt.) e.g. "Demo Shop\\Checkout"
+#     id_source: "id"            # id (default: the work item id is the case ID) | field | tag, for projects with own IDs
+#     id_field: ""               # with field: e.g. Custom.QaId
+#     id_tag_prefix: ""          # with tag: e.g. "qa-id-"
+#     fields: {}                 # model field -> work item field; "tag:<prefix>" for tags (technique section 1.1)
+#   results:
+#     outcomes: {}               # (req.) EVERY status of the project -> outcome, or "skip"/empty = not sent; never Question
+#                                #   e.g. {"Pass": Passed, "Fail": Failed, "Blocked": Blocked, "N/A": NotApplicable, "Not run": skip}
+#     configurations: {}         # (opt.) platform -> Test Configuration, when a case has several test points
+#                                #   e.g. {web: "Windows 11 - Chrome", android: "Android 15"}
+#     run_name: "{batch_id} · {environment} · {build}"   # (opt.)
+#     attach_evidence: false     # (opt.) off by default; screenshots go only with evidence: "text+screenshot"
+#   bugs:
+#     work_item_type: "Bug"      # (opt.)
+#     area_path: ""              # (opt.) default: the test case's area
+#     iteration_path: ""         # (opt.)
+#     fields: {}                 # model field -> work item field
+#     defaults: {}               # (opt.)
+#     closed_states: ["Closed", "Removed"]   # (opt.) not open in the duplicate search (Scrum: ["Done", "Removed"])
+#     states: []                 # (opt.) states a retest may move a bug to (resolved_bugs rule)
+#     priorities: []             # (opt.) priorities a new_defect may have (checked before any request)
+
+# Bugs created in Azure DevOps through the write guard (scripts/ado_write_guard.py --project-yaml), with any tracker:
+# technique-ado-write-guard.md, «Final preview of a bug's fields». Optional: without it, the four standard fields.
+# write_guard:
+#   bugs:
+#     labels: {}                 # (opt.) model key -> name shown in the Board's form
+#     fields: {}                 # (opt.) extra field: model key -> {reference: "<confirmed reference name>", label, required}
+#     checks: {}                 # (opt.) model key -> [{name, pattern}]: what the field must contain (regex)
+#     notices: {}                # (opt.) model key -> [{name, pattern}]: said in the preview when present
+#     require_patch_hash: false  # (opt.) the creation needs the patch_sha256 of the preview

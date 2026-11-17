@@ -1,0 +1,148 @@
+"""Command line: version, help, usage errors and exit codes that need no browser (docs/qa-audit.md §2)."""
+
+import contextlib
+import io
+import os
+import tempfile
+import types
+import unittest
+from unittest import mock
+
+from qa_audit import __version__, cli
+from qa_audit.core.console import Console
+
+
+def never_audit(*args, **kwargs):
+    raise AssertionError("a unit test reached the runner: it would launch a browser and use the network")
+
+
+def run(argv):
+    out, err = io.StringIO(), io.StringIO()
+    with (contextlib.redirect_stdout(out), contextlib.redirect_stderr(err),
+          mock.patch("qa_audit.core.runner.run", never_audit)):
+        try:
+            code = cli.main(argv) if argv[:1] in (["version"], ["--version"]) else cli.audit(argv, Console(out, False))
+        except SystemExit as e:        # argparse
+            code = e.code
+    return code, out.getvalue(), err.getvalue()
+
+
+class Cli(unittest.TestCase):
+    def test_version(self):
+        for argv in (["version"], ["--version"]):
+            code, out, _ = run(argv)
+            self.assertEqual((code, out.strip()), (0, f"qa-audit {__version__}"))
+
+    def test_help_lists_the_options(self):
+        code, out, _ = run(["--help"])
+        self.assertEqual(code, 0)
+        for opt in ("--type", "--browser", "--headed", "--screenshots", "--report", "--cleanup", "--fail-on",
+                    "authorized"):
+            self.assertIn(opt, out)
+
+    def test_usage_errors_exit_2(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            secret = os.path.join(tmp, "c.yaml")
+            with open(secret, "w", encoding="utf-8") as f:
+                f.write("login: {password: x}\n")
+            bad = os.path.join(tmp, "t.yaml")
+            with open(bad, "w", encoding="utf-8") as f:
+                f.write("modules: {performance: {thresholds: {ttfb_ms: {good: 900, poor: 100}, speed: 1}}}\n")
+            for argv in (["https://shop.example", "--config", bad], ["not-a-url"],
+                         ["https://shop.example", "--type", "nope"], ["https://shop.example", "--viewport", "big"],
+                         ["https://shop.example", "--report", "pdf"], ["https://shop.example", "--config", secret],
+                         ["https://shop.example", "--browser", "ie"], ["https://shop.example", "--exclude", "("]):
+                with self.subTest(argv=argv):
+                    code, _, err = run(argv)
+                    self.assertEqual(code, 2, err)
+
+    def test_login_without_its_environment_variables_is_a_usage_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "auth.yaml")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("auth: {method: form, login_url: /login, username_env: NOT_SET_USER_X, "
+                        "pass_env: NOT_SET_PASS_X, success_url: /account}\n")
+            with mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("NOT_SET_USER_X", None)
+                code, _, err = run(["https://shop.example", "--config", path])
+        self.assertEqual(code, 2)
+        self.assertIn("NOT_SET_USER_X", err)
+
+    def test_a_module_asked_for_by_name_that_cannot_run_is_an_error(self):
+        with mock.patch("qa_audit.modules.visual.compare.pillow_available", return_value=False):
+            code, _, err = run(["https://shop.example", "--type", "visual"])
+        self.assertEqual(code, 2)
+        self.assertIn("Pillow is not installed", err)
+
+    def test_baselines_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "shop.example", "chromium", "desktop"))
+            with open(os.path.join(tmp, "shop.example", "chromium", "desktop", "index.png"), "wb") as f:
+                f.write(b"png")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(cli.main(["baselines", "--baseline-dir", tmp]), 0)
+                self.assertIn("shop.example", out.getvalue())
+                self.assertEqual(cli.main(["baselines", "--baseline-dir", tmp, "--delete", "other.example"]), 1)
+                self.assertEqual(cli.main(["baselines", "--baseline-dir", tmp, "--delete", "shop.example"]), 0)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "shop.example")))
+
+    def test_sessions_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "shop.example.json"), "w", encoding="utf-8") as f:
+                f.write('{"cookies": [], "origins": []}')
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(cli.main(["sessions", "--sessions-dir", tmp]), 0)
+                self.assertIn("shop.example", out.getvalue())
+                self.assertEqual(cli.main(["sessions", "--sessions-dir", tmp, "--delete", "other.example"]), 1)
+                self.assertEqual(cli.main(["sessions", "--sessions-dir", tmp, "--delete", "shop.example"]), 0)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "shop.example.json")))
+
+    def test_login_command_refuses_a_configuration_without_storage_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "auth.yaml")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("auth: {method: manual, login_url: /login, success_url: /account}\n")
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                self.assertEqual(cli.main(["login", "https://shop.example", "--config", path, "--no-color"]), 2)
+        self.assertIn("storage-state", err.getvalue())
+
+    def test_an_audit_with_storage_state_and_no_saved_session_is_a_usage_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "auth.yaml")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(f"auth: {{method: storage-state, login_url: /login, success_url: /account, "
+                        f"state_file: '{os.path.join(tmp, 'missing.json')}'}}\n")
+            code, _, err = run(["https://shop.example", "--config", path])
+        self.assertEqual(code, 2)
+        self.assertIn("qa-audit login", err)
+
+    def test_overrides_only_what_was_given(self):
+        a = cli.build_parser().parse_args(["https://shop.example", "--max-pages", "3", "--screenshots"])
+        self.assertEqual(cli.overrides_from_args(a),
+                         {"crawl": {"max_pages": 3}, "evidence": {"screenshots": "all"}})
+
+    def test_exit_code_by_fail_on(self):
+        f = types.SimpleNamespace
+        result = f(findings=[f(status="problem", severity="medium"), f(status="needs-human", severity="high")])
+        self.assertEqual(cli.exit_code(result, "high"), 0)     # needs-human never fails the run
+        self.assertEqual(cli.exit_code(result, "medium"), 1)
+        self.assertEqual(cli.exit_code(result, "none"), 0)
+
+
+class AsAModule(unittest.TestCase):
+    def test_python_m_qa_audit_is_the_same_command(self):
+        # audit finding E-01: after a Python upgrade the `qa-audit` launcher pointed at the old interpreter and printed nothing
+        import subprocess
+        import sys
+        root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        done = subprocess.run([sys.executable, "-m", "qa_audit", "version"], capture_output=True, text=True, timeout=60,
+                              check=False, cwd=root, env={**os.environ, "PYTHONPATH": os.path.join(root, "src")})
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(done.stdout.strip(), f"qa-audit {__version__}")
+
+
+if __name__ == "__main__":
+    unittest.main()

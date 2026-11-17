@@ -1,0 +1,32 @@
+﻿.env
+*.env
+__pycache__/
+*.pyc
+node_modules/
+test-results/
+playwright-report/
+.venv/
+dist/
+build/
+*.log
+.DS_Store
+Thumbs.db
+.ruff_cache/
+*.egg-info/
+
+# qa-audit output and evidence (docs/qa-audit.md §7): never committed
+qa-output/
+screenshots/
+videos/
+traces/
+logs/
+*.har
+*.webm
+storage-state*.json
+
+# credentials and local configuration
+credentials*
+secrets*
+*.pem
+*.key
+qa-audit.local.yaml

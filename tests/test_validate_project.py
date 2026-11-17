@@ -1,0 +1,788 @@
+"""scripts/validate_project.py (methodology 4.1): closed list of modules, section
+of each active module, Excel and dashboard. The demo must pass.
+
+python -m unittest discover -s tests   (from the root of qa-assistant)
+"""
+
+import contextlib
+import io
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import typing
+import unittest
+from unittest import mock
+
+import yaml
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path[:0] = [os.path.join(ROOT, "scripts")]
+
+import validate_project as vp
+import workspace_git as wg
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from test_workspace_git import FakeGh, isolate_git, restore_git
+
+
+def setUpModule():
+    # git exports its hook variables (GIT_DIR...); committing from a linked worktree they are absolute paths, and the
+    # `git -C <tmp>` of the script under test read this repository. They are dropped, and git gets a temporary home
+    # and global configuration (never the user's)
+    isolate_git()
+    NO_SECTION.start()
+
+
+def tearDownModule():
+    NO_SECTION.stop()
+    restore_git()
+
+
+# the base's tracker is azure-devops without its section: these tests are not about the tracker's section, so
+# config.IMPLEMENTED is emptied while they run (a missing section is then not reported); the tracker tests set it back
+BASE = {"project": "demo-shop", "company": "demo", "environments": {"test": "https://shop.demo"},
+        "tracker": "azure-devops", "bug_format": "SHOP-{n}", "resolved_bugs": "remove", "evidence": "text",
+        "modules": ["functional-web"]}
+REAL_IMPLEMENTED = set(vp.tracker_config.IMPLEMENTED)
+NO_SECTION = mock.patch.object(vp.tracker_config, "IMPLEMENTED", set())
+MOBILE = {"platform": "android", "flows": "flows", "app_id": "com.demoshop.app"}
+
+
+class Validate(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        # history/ protected, as the onboarding leaves it (docs/workspace/settings.json)
+        os.makedirs(os.path.join(self.tmp.name, ".claude"))
+        shutil.copy(os.path.join(ROOT, "docs", "workspace", "settings.json"), os.path.join(self.tmp.name, ".claude"))
+        self.gh = FakeGh()                                              # gh is never the real one
+        patcher = mock.patch.object(wg, "gh", self.gh)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def with_(self, **changes):
+        proj = {**BASE, **changes}
+        with open(os.path.join(self.tmp.name, "project.yaml"), "w", encoding="utf-8") as f:
+            yaml.safe_dump(proj, f, allow_unicode=True)
+        return vp.validate(self.tmp.name)
+
+    def test_base_is_valid(self):
+        self.assertEqual(self.with_(), ([], []))
+
+    def test_a_value_cut_at_a_comment_is_warned_by_name_only(self):
+        # audit finding D-10: a password written without quotes, from before the rule, must not be cut in silence
+        with open(os.path.join(self.tmp.name, ".env"), "w", encoding="utf-8") as f:
+            f.write("SHOP_PASSWORD=fictional #part" + chr(10))
+        _, warnings = self.with_()
+        self.assertTrue(any("SHOP_PASSWORD" in w and "quotes" in w for w in warnings), warnings)
+        self.assertFalse(any("fictional" in w for w in warnings))
+
+    def test_excel_cases_fields_without_title_or_expected_is_warned(self):
+        # the first real batch of a mobile project: a workbook in another language, its title and expected columns unmapped,
+        # reached the agent empty and every case came back Question
+        import workspace_kit as kit
+        tmp = kit.workspace()
+        self.addCleanup(tmp.cleanup)
+        _, warnings = vp.validate(tmp.name)
+        self.assertTrue(any("excel.cases.fields does not map expected:" in w for w in warnings), warnings)
+        with open(os.path.join(tmp.name, "project.yaml"), encoding="utf-8") as f:
+            proj = yaml.safe_load(f)
+        proj["excel"]["cases"]["fields"] = {"title": "Title", "expected": "Notes"}
+        kit.write_project(tmp.name, proj)
+        _, warnings = vp.validate(tmp.name)
+        self.assertFalse(any("excel.cases.fields" in w for w in warnings), warnings)
+
+    def test_the_old_rebuild_rule_is_warned(self):
+        # plan 10.6: "rebuild the workbook with rebuild_workbook.py" only holds for the demo, which has its own script
+        ws = self.tmp.name
+        self.assertEqual(vp.rebuild_rule_warnings(ws), [])
+        with open(os.path.join(ws, "CLAUDE.md"), "w", encoding="utf-8") as f:
+            f.write("- Never edit the workbook by hand: rebuild it with rebuild_workbook.py.\n")
+        w = vp.rebuild_rule_warnings(ws)
+        self.assertEqual(len(w), 1)
+        self.assertIn("adapters.excel.add_cases", w[0])
+        open(os.path.join(ws, "rebuild_workbook.py"), "w").close()
+        self.assertEqual(vp.rebuild_rule_warnings(ws), [])
+
+    def test_every_tracker_has_its_adapter_and_needs_its_section(self):
+        # plans 10.2 and 10.3: both back-ends are done, so the section is required and there is no "no adapter"
+        # warning for any tracker
+        from tracker_kit import AZURE, JIRA
+        self.assertEqual(REAL_IMPLEMENTED, {"jira", "azure-devops"})
+        patcher = mock.patch.object(vp.tracker_config, "IMPLEMENTED", REAL_IMPLEMENTED)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for tracker, section, value in (("jira", "jira", JIRA), ("azure-devops", "azure_devops", AZURE)):
+            with self.subTest(tracker=tracker):
+                proj = {k: v for k, v in BASE.items() if k != "azure_devops"}
+                with open(os.path.join(self.tmp.name, "project.yaml"), "w", encoding="utf-8") as f:
+                    yaml.safe_dump({**proj, "tracker": tracker}, f, allow_unicode=True)
+                problems, warnings = vp.validate(self.tmp.name)
+                self.assertTrue(any(f"without the {section}: section" in p for p in problems), problems)
+                self.assertFalse(any("has no adapter" in w for w in warnings), warnings)
+                problems, warnings = self.with_(tracker=tracker, **{section: value})
+                self.assertEqual(problems, [])
+                self.assertFalse(any("has no adapter" in w for w in warnings), warnings)
+
+    def test_the_tracker_section_is_checked(self):
+        # plan 10.1: the jira: / azure_devops: section, through adapters/tracker/config.py (fictional Demo Shop)
+        from tracker_kit import JIRA
+        not_a_variable_name = "not a name"
+        jira = {**JIRA, "site": "http://demo-shop.atlassian.net", "token_var": not_a_variable_name,
+                "results": {"statuses": {"Pass": "PASSED", "Question": "TODO", "Blocked": "skip"}}}
+        problems, warnings = self.with_(tracker="jira", jira=jira)
+        text = " | ".join(problems)
+        for part in ("jira.site", "jira.token_var", "Question"):
+            self.assertIn(part, text)
+        self.assertFalse(any("has no adapter" in w for w in warnings), warnings)
+        self.assertTrue(any("not sent" in w and "Blocked" in w for w in warnings), warnings)
+        azure = {"organization_url": "https://dev.azure.com/demo-shop", "project": "Demo Shop",
+                 "pat_var": "DS_ADO_PAT", "cases": {"plan_id": 12},
+                 "results": {"outcomes": {"Pass": "Passed", "Fail": "Timeout"}}}
+        problems, warnings = self.with_(tracker="azure-devops", azure_devops=azure)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("Timeout", problems[0])
+        self.assertFalse(any("has no adapter" in w for w in warnings), warnings)
+
+    def test_a_module_outside_the_list(self):
+        problems, _ = self.with_(modules=["functional-web", "smoke"])
+        self.assertTrue(any("outside the closed list" in p and "smoke" in p for p in problems), problems)
+
+    def test_an_active_module_without_its_section(self):
+        problems, _ = self.with_(modules=["api", "mobile"], mobile={"platform": "web"})
+        self.assertTrue(any("'api'" in p and "base_url" in p for p in problems), problems)
+        self.assertTrue(any("'mobile'" in p and "flows" in p for p in problems), problems)
+
+    def test_a_section_without_its_module_is_a_warning(self):
+        problems, warnings = self.with_(api={"base_url": "https://api.shop.demo"})
+        self.assertEqual(problems, [])
+        self.assertTrue(any("section api:" in w for w in warnings), warnings)
+
+    def test_base_fields(self):
+        problems, _ = self.with_(project="", tracker="trello", evidence="video", environments={})
+        text = " | ".join(problems)
+        for fragment in ("'project' is empty", "tracker 'trello'", "evidence", "'environments' is empty"):
+            self.assertIn(fragment, text)
+
+    def test_old_values_are_problems(self):
+        # a project.yaml written by hand with the values from before the translation (plan 8.11)
+        problems, _ = self.with_(resolved_bugs="remover", evidence="texto", modules=["funcional-web"])
+        text = " | ".join(problems)
+        self.assertIn("resolved_bugs", text)
+        self.assertIn("evidence", text)
+        self.assertIn("funcional-web", text)
+
+    def test_an_environment_without_a_url_or_badly_written(self):
+        problems, _ = self.with_(environments={"test": "", "uat": "shop.demo"})
+        text = " | ".join(problems)
+        self.assertIn("environment 'test' without a URL", text)
+        self.assertIn("environment 'uat'", text)
+
+    def test_module_urls_inside_the_environments(self):
+        a11y = {"pages": [{"name": "home", "url": "https://shop.demo/"},
+                          {"name": "account", "url": "https://shop.demo.other.pt/account"}]}
+        problems, _ = self.with_(modules=["api", "accessibility"], accessibility=a11y,
+                                 api={"base_url": "https://api.shop.demo/v1"})
+        text = " | ".join(problems)
+        self.assertIn("api.base_url (https://api.shop.demo/v1) outside the environments", text)
+        self.assertIn("accessibility.pages[account]", text)  # a similar host does not count
+        self.assertNotIn("pages[home]", text)
+
+    def test_a_production_url_is_a_problem(self):
+        problems, _ = self.with_(modules=["api"], api={"base_url": "https://shop.pt/api"},
+                                 environments={"test": "https://test.shop.pt", "production": "https://shop.pt"})
+        self.assertTrue(any("'production'" in p for p in problems), problems)
+
+    def test_a_url_with_the_environments_path(self):
+        problems, _ = self.with_(modules=["api"], environments={"test": "https://shop.demo/app/"},
+                                 api={"base_url": "https://shop.demo/app/api"})
+        self.assertEqual(problems, [])
+        problems, _ = self.with_(modules=["api"], environments={"test": "https://shop.demo/app/"},
+                                 api={"base_url": "https://shop.demo/application"})
+        self.assertTrue(problems)
+
+    @unittest.skipUnless(shutil.which("git"), "no git")
+    def test_gitignore_in_a_workspace_with_git(self):
+        subprocess.run(["git", "init", "-q", self.tmp.name], check=True)
+        _, warnings = self.with_(modules=["api"], api={"base_url": "https://shop.demo/api"})
+        self.assertTrue(any(w.startswith(".env is not in the workspace") for w in warnings), warnings)
+        self.assertTrue(any(".api-session.env" in w for w in warnings), warnings)
+        with open(os.path.join(self.tmp.name, ".gitignore"), "w", encoding="utf-8") as f:
+            f.write("*.env\n")
+        _, warnings = self.with_(modules=["api"], api={"base_url": "https://shop.demo/api"})
+        self.assertEqual([w for w in warnings if "has no remote" not in w], [])
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", self.tmp.name, *args], capture_output=True, text=True, check=True).stdout
+
+    def committed_workspace(self, **changes):
+        """A workspace that is a repository of its own, with the template's .gitignore and one commit."""
+        self.with_(**changes)
+        shutil.copy(os.path.join(ROOT, "docs", "workspace", "gitignore"), os.path.join(self.tmp.name, ".gitignore"))
+        self.git("init", "-q")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "workspace: initial commit")
+
+    @unittest.skipUnless(shutil.which("git"), "no git")
+    def test_portable_workspace_warnings(self):
+        api = {"base_url": "https://shop.demo/api", "credentials": {"admin": {"user_var": "SHOP_ADMIN_USER",
+                                                                             "pass_var": "SHOP_ADMIN_PASSWORD"}}}
+        self.committed_workspace(modules=["api"], api=api)
+        problems, warnings = self.with_(modules=["api"], api=api)
+        self.assertEqual(problems, [])
+        text = " | ".join(warnings)
+        self.assertIn("has no remote", text)
+        self.assertIn(".env.example (it does not exist) misses variables of project.yaml: SHOP_ADMIN_PASSWORD, "
+                      "SHOP_ADMIN_USER", text)
+        with open(os.path.join(self.tmp.name, ".env.example"), "w", encoding="utf-8") as f:
+            f.write("SHOP_ADMIN_USER=\n")
+        # a sibling of the workspace's temporary folder, as an absolute path: with "tmp/../x" the cleanup ran after
+        # tmp was removed, the path no longer resolved and the bare repository stayed in the temporary folder
+        bare = os.path.normpath(os.path.join(self.tmp.name, "..", os.path.basename(self.tmp.name) + "-remote.git"))
+        subprocess.run(["git", "init", "-q", "--bare", bare], check=True)
+        self.addCleanup(shutil.rmtree, bare, True)
+        self.git("remote", "add", "origin", bare)
+        _, warnings = self.with_(modules=["api"], api=api)
+        text = " | ".join(warnings)
+        self.assertNotIn("has no remote", text)
+        self.assertIn(".env.example misses variables of project.yaml: SHOP_ADMIN_PASSWORD (", text)
+        self.assertIn("1 commit(s) not pushed", text)
+        self.assertNotIn("visibility", text)                            # a local path: gh is not asked
+        self.git("push", "-q", "-u", "origin", "HEAD")
+        real = wg.file_size
+        with mock.patch.object(wg, "file_size", lambda p: wg.LIMIT + 1 if p.endswith("project.yaml") else real(p)):
+            _, warnings = self.with_(modules=["api"], api=api)
+        text = " | ".join(warnings)
+        self.assertNotIn("not pushed", text)
+        self.assertIn("tracked files over 50 MB: project.yaml", text)
+
+    @unittest.skipUnless(shutil.which("git"), "no git")
+    def test_env_tracked_or_a_public_remote_are_problems(self):
+        self.committed_workspace()
+        with open(os.path.join(self.tmp.name, ".env"), "w", encoding="utf-8") as f:
+            f.write("SHOP_ADMIN_USER=\n")
+        self.git("add", "-f", ".env")
+        problems, _ = self.with_()
+        self.assertTrue(any(p.startswith(".env is tracked by git") for p in problems), problems)
+        self.git("rm", "-q", "--cached", ".env")
+        self.git("remote", "add", "origin", "https://github.com/demo-user/demo-shop.git")
+        for visibility, problem, warning in [("PUBLIC", "is PUBLIC", None), ("PRIVATE", None, None),
+                                             ("INTERNAL", None, "is INTERNAL"), (None, None, None)]:
+            with self.subTest(visibility=visibility), mock.patch.object(wg, "gh", FakeGh(visibility)):
+                problems, warnings = self.with_()
+                self.assertEqual([p for p in problems if "PUBLIC" in p] != [], problem is not None, problems)
+                self.assertEqual(any("INTERNAL" in w for w in warnings), warning is not None, warnings)
+        with mock.patch.object(wg, "gh", FakeGh("PRIVATE", fail=True)):
+            _, warnings = self.with_()
+        self.assertTrue(any("could not be confirmed" in w for w in warnings), warnings)
+
+    @unittest.skipUnless(shutil.which("git"), "no git")
+    def test_a_folder_inside_another_repository_only_checks_env(self):
+        # e.g. qa-assistant's demo: not a repository of its own, so no remote or push warnings
+        self.git("init", "-q")
+        sub = os.path.join(self.tmp.name, "demo")
+        os.makedirs(sub)
+        with open(os.path.join(sub, "project.yaml"), "w", encoding="utf-8") as f:
+            yaml.safe_dump({**BASE, "mobile": {"variables": ["SHOP_APP_USER"]}}, f)
+        _, warnings = vp.validate(sub)
+        self.assertFalse(any("remote" in w or ".env.example" in w for w in warnings), warnings)
+
+    def test_history_without_protection_is_a_warning(self):
+        settings = os.path.join(self.tmp.name, ".claude", "settings.json")
+        for content in (None, "{}", '{"permissions": {"deny": ["Write(/history/**)"]}}',
+                        '{"permissions": {"deny": ["Edit(/historico/**)"]}}', "not json"):
+            with self.subTest(content=content):
+                if content is None:
+                    os.remove(settings)
+                else:
+                    with open(settings, "w", encoding="utf-8") as f:
+                        f.write(content)
+                problems, warnings = self.with_()
+                self.assertEqual(problems, [])
+                self.assertTrue(any("history/ is not protected" in w for w in warnings), warnings)
+
+    def test_the_workspaces_mcp(self):
+        # lessons of the pilot (25.09.2026): fixed version, --secrets .env and --isolated
+        mcp = os.path.join(self.tmp.name, ".mcp.json")
+        cases = {
+            '["/c", "npx", "@playwright/mcp@0.0.82", "--secrets", ".env", "--isolated"]': [],
+            '["/c", "npx", "@playwright/mcp@latest", "--secrets", ".env", "--isolated"]': ["without a fixed version"],
+            '["/c", "npx", "@playwright/mcp@0.0.82", "--isolated"]': ["--secrets .env is missing"],
+            '["/c", "npx", "@playwright/mcp@0.0.82", "--secrets", ".env"]': ["--isolated is missing"],
+        }
+        for args, expected in cases.items():
+            with self.subTest(args=args):
+                with open(mcp, "w", encoding="utf-8") as f:
+                    f.write('{"mcpServers": {"playwright": {"command": "cmd", "args": ' + args + '}}}')
+                warnings = vp.mcp_warnings(self.tmp.name)
+                self.assertEqual(len(warnings), len(expected), warnings)
+                for text in expected:
+                    self.assertTrue(any(text in a for a in warnings), warnings)
+        os.remove(mcp)
+        self.assertEqual(vp.mcp_warnings(self.tmp.name), [])          # no .mcp.json: nothing to check
+
+    def test_history_protected_with_other_rules(self):
+        with open(os.path.join(self.tmp.name, ".claude", "settings.json"), "w", encoding="utf-8") as f:
+            f.write('{"permissions": {"deny": ["Bash(git push *)", "Edit(history/**)"]}}')
+        self.assertEqual(self.with_(), ([], []))
+
+    def test_the_device_keys_of_mobile(self):
+        """The keys scripts/device.py reads (plan 9.3): accepted when well written, refused otherwise."""
+        good = {"serial": "emulator-5554", "send_label": ["Send", "Send message"], "ignore_labels": ["New chat"],
+                "evidence_batch": "20260928", "browser": "com.android.chrome", "input": "driver"}
+        self.assertEqual(self.with_(modules=["mobile"], mobile={**MOBILE, **good}), ([], []))
+        problems, _ = self.with_(modules=["mobile"], mobile={**MOBILE, "send_label": "Send"})
+        self.assertEqual(problems, [])                                  # one label as a text is also valid
+        for key, value in [("serial", 5554), ("serial", "emulator 5554"), ("input", "scrcpy"), ("send_label", []),
+                           ("send_label", ["Send", 3]), ("ignore_labels", "New chat"), ("ignore_labels", [""]),
+                           ("evidence_batch", 20260928), ("evidence_batch", "../other"),
+                           ("browser", "chrome"), ("browser", "com.android.chrome/.Main")]:
+            problems, _ = self.with_(modules=["mobile"], mobile={**MOBILE, key: value})
+            self.assertTrue(any(f"mobile.{key}" in p for p in problems), (key, value, problems))
+
+    # --- the ci: section (plan 11.0, technique-mobile.md §11.5)
+
+    CI: typing.ClassVar[dict] = {"runner": "ubuntu-24.04", "timeout_minutes": 60, "max_turns": 150, "secrets": ["SHOP_APP_USER"],
+          "login": {"mode": "manual-issue", "flow": "flows/_request_link.yaml", "timeout_minutes": 30,
+                    "hosts": ["auth.demoshop.example"], "user": "demo-owner", "screen_text": "Send me a link"}}
+    MOBILE_CI: typing.ClassVar[dict] = {**MOBILE, "variables": ["SHOP_APP_USER"]}
+
+    def test_a_valid_ci_section(self):
+        os.makedirs(os.path.join(self.tmp.name, "flows"))
+        open(os.path.join(self.tmp.name, "flows", "_request_link.yaml"), "w").close()
+        self.assertEqual(self.with_(modules=["mobile"], mobile=self.MOBILE_CI, ci=self.CI), ([], []))
+        # every key is optional: an empty section is valid (defaults: ubuntu-24.04, 60 min, 150 turns, no login)
+        self.assertEqual(self.with_(modules=["mobile"], mobile=self.MOBILE_CI, ci={}), ([], []))
+
+    def test_ci_problems(self):
+        login = self.CI["login"]
+        for ci, fragment in [({"runner": "ubuntu-24.04-4core"}, "ci.runner"),       # a larger runner: paid
+                             ({"runner": "self-hosted"}, "ci.runner"),
+                             ({"runner": "macos-15"}, "ci.runner"),
+                             ({"timeout_minutes": 0}, "ci.timeout_minutes"),
+                             ({"timeout_minutes": 500}, "ci.timeout_minutes"),
+                             ({"max_turns": "many"}, "ci.max_turns"),
+                             ({"secrets": 5}, "ci.secrets"),
+                             ({"secrets": ["SHOP_APP_USER=me@demo"]}, "ci.secrets"),       # a value, never
+                             ({"secrets": ["CLAUDE_CODE_OAUTH_TOKEN"]}, "workflow's own secrets"),
+                             ({"login": {"mode": "magic"}}, "ci.login.mode"),
+                             ({"login": {"mode": "manual-issue"}}, "ci.login.flow is empty"),
+                             ({"login": {**login, "flow": "flows/request_link.yaml"}}, "starts with '_'"),
+                             ({"login": {**login, "timeout_minutes": 90}}, "shorter than ci.timeout_minutes"),
+                             ({"login": {**login, "hosts": ["https://auth.demoshop.example/x"]}}, "ci.login.hosts"),
+                             ({"login": {**login, "user": "not a login"}}, "ci.login.user"),
+                             ("ubuntu-24.04", "ci: must be a map")]:
+            with self.subTest(ci=ci):
+                problems, _ = self.with_(modules=["mobile"], mobile=self.MOBILE_CI, ci=ci)
+                self.assertTrue(any(fragment in p for p in problems), (ci, problems))
+
+    def test_ci_warnings(self):
+        _, warnings = self.with_(modules=["mobile"], mobile=self.MOBILE_CI, ci=self.CI)
+        self.assertTrue(any("does not exist in the workspace yet" in w for w in warnings), warnings)
+        _, warnings = self.with_(modules=["mobile"], mobile=MOBILE, ci={"secrets": ["SHOP_OTHER"]})
+        self.assertTrue(any("SHOP_OTHER" in w and "not variables" in w for w in warnings), warnings)
+        _, warnings = self.with_(ci={})
+        self.assertTrue(any("'mobile' is not in 'modules'" in w for w in warnings), warnings)
+        _, warnings = self.with_(modules=["mobile"], mobile=MOBILE, ci={"runners": "x"})
+        self.assertTrue(any("unknown key" in w for w in warnings), warnings)
+
+    def test_the_build_version_is_a_text(self):
+        build = {"source": "release build-1.4.0-140", "sha256": "a" * 64}
+        self.assertEqual(self.with_(modules=["mobile"], mobile={**MOBILE, "build": {**build, "version": "1.4.0 (140)"}})[0],
+                         [])
+        problems, _ = self.with_(modules=["mobile"], mobile={**MOBILE, "build": {**build, "version": 1.4}})
+        self.assertTrue(any("mobile.build.version" in p for p in problems), problems)
+
+
+REAL = {"skills_state": vp.skills_state, "playwright_browsers": vp.playwright_browsers}
+
+
+class Environment(unittest.TestCase):
+    """--environment (methodology 12.3; plan 9.5): every lookup is faked; nothing of this computer is read."""
+
+    ALL: typing.ClassVar[dict] = {"git": "/bin/git", "node": "/bin/node", "maestro": "/bin/maestro",
+                                  "xcrun": "/usr/bin/xcrun"}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.ws = self.tmp.name
+        self.found = dict(self.ALL)
+        self.android = {"adb": "/sdk/platform-tools/adb", "emulator": "/sdk/emulator/emulator"}
+        self.skills = {"checkpoint": "same", "run-batch": "same"}
+        clean = {k: v for k, v in os.environ.items() if k not in ("QA_MOBILE_SERIAL", "QA_MOBILE_INPUT")}
+        patcher = mock.patch.dict(os.environ, clean, clear=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for name, fake in [("which", lambda n: self.found.get(n)), ("python_version", lambda: (3, 12, 1)),
+                           ("soffice", lambda: self.found.get("soffice", "/opt/soffice")),
+                           ("android_tools", lambda: dict(self.android)), ("qa_audit_installed", lambda: True),
+                           ("playwright_browsers", lambda: {"chromium"}), ("skills_state", lambda: self.skills)]:
+            patcher = mock.patch.object(vp, name, fake)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def project(self, **changes):
+        proj = {**BASE, **changes}
+        with open(os.path.join(self.ws, "project.yaml"), "w", encoding="utf-8") as f:
+            yaml.safe_dump(proj, f)
+        return proj
+
+    def checks(self, **changes):
+        return {tool: (ok, detail) for ok, tool, detail in vp.environment(self.ws, self.project(**changes))}
+
+    def write(self, name, text):
+        with open(os.path.join(self.ws, name), "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def test_always_git_python_env_and_skills(self):
+        c = self.checks()
+        self.assertEqual(set(c), {"git", "python", ".env", "skills", "node"})   # base: functional-web
+        self.assertTrue(all(ok for ok, _ in c.values()), c)
+        self.found.pop("git")
+        self.assertFalse(self.checks()["git"][0])
+        with mock.patch.object(vp, "python_version", lambda: (3, 11, 9)):
+            ok, detail = self.checks()["python"]
+        self.assertFalse(ok)
+        self.assertIn(">= 3.12", detail)
+
+    def test_on_a_runner_env_needs_only_ci_secrets(self):
+        # plan 11.4: the runner's .env is written from the Actions secrets of ci.secrets only
+        proj = self.project(modules=["mobile"], mobile={**MOBILE, "variables": ["SHOP_APP_USER", "SHOP_OTHER"]},
+                            ci={"secrets": ["SHOP_APP_USER"]})
+        with open(os.path.join(self.ws, ".env"), "w", encoding="utf-8") as f:
+            f.write("SHOP_APP_USER=tester@demoshop.example\n")
+        self.assertFalse(vp.env_check(self.ws, proj)[0])                          # SHOP_OTHER missing here
+        ok, detail = vp.env_check(self.ws, proj, ci=True)
+        self.assertTrue(ok, detail)
+        self.assertNotIn("tester@demoshop.example", detail)
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            vp.main([self.ws, "--ci"])                                             # only with --environment
+
+    def test_env_missing_a_name_is_reported_without_any_value(self):
+        creds = {"admin": {"user_var": "SHOP_ADMIN_USER", "pass_var": "SHOP_ADMIN_PASSWORD"}}
+        self.write(".env.example", "SHOP_ADMIN_USER=\nSHOP_ADMIN_PASSWORD=\nSHOP_EXTRA_TOKEN=\n")
+        ok, detail = self.checks(api={"base_url": "https://shop.demo", "credentials": creds})[".env"]
+        self.assertFalse(ok)
+        self.assertIn("copy .env.example", detail)
+        value = "never shown"
+        self.write(".env", f"SHOP_ADMIN_USER={value}\nSHOP_EXTRA_TOKEN=\n")
+        ok, detail = self.checks(api={"base_url": "https://shop.demo", "credentials": creds})[".env"]
+        self.assertFalse(ok)
+        self.assertIn("misses SHOP_ADMIN_PASSWORD", detail)
+        self.assertIn("without a value: SHOP_EXTRA_TOKEN", detail)
+        self.assertNotIn(value, detail)
+        self.write(".env", "SHOP_ADMIN_USER=u1\nSHOP_ADMIN_PASSWORD=p1\nSHOP_EXTRA_TOKEN=t1\n")
+        ok, detail = self.checks(api={"base_url": "https://shop.demo", "credentials": creds})[".env"]
+        self.assertTrue(ok, detail)
+        for value in ("u1", "p1", "t1"):
+            self.assertNotIn(f"={value}", detail)
+
+    def test_skills_out_of_sync_are_reported(self):
+        self.skills = {"checkpoint": "different", "run-batch": "missing", "log-bug": "same"}
+        ok, detail = self.checks()["skills"]
+        self.assertFalse(ok)
+        self.assertIn("checkpoint, run-batch", detail)
+        self.assertIn("sync_skills.py --apply", detail)
+
+    def test_skills_state_is_sync_skills_comparison_read_only(self):
+        import sync_skills
+        with tempfile.TemporaryDirectory() as target, mock.patch.object(sync_skills, "TARGET", target):
+            state = REAL["skills_state"]()      # the real one, on an empty global copy
+            self.assertEqual(os.listdir(target), [])
+        self.assertTrue(state and set(state.values()) == {"missing"}, state)
+
+    def test_excel_needs_libreoffice_unless_excel_com(self):
+        self.assertTrue(self.checks(tracker="excel")["libreoffice"][0])
+        self.found["soffice"] = None
+        ok, detail = self.checks(tracker="excel")["libreoffice"]
+        self.assertFalse(ok)
+        self.assertIn("LibreOffice", detail)
+        c = self.checks(tracker="excel", excel={"recalc": {"mechanism": "excel-com"}})
+        self.assertNotIn("libreoffice", c)
+        self.assertTrue(c["recalculation"][0])
+        self.assertNotIn("libreoffice", self.checks(tracker="jira"))
+
+    def test_a_ci_runner_does_not_need_libreoffice(self):
+        # the 11.8 pilot: the run job stopped on LibreOffice, which only qa-apply.yml needs (and installs)
+        self.found["soffice"] = None
+        c = {tool: (ok, detail) for ok, tool, detail in vp.environment(self.ws, self.project(tracker="excel"), ci=True)}
+        self.assertNotIn("libreoffice", c)
+        self.assertTrue(c["recalculation"][0])
+        self.assertIn("qa-apply.yml", c["recalculation"][1])
+
+    def test_mobile_android(self):
+        mobile = {**MOBILE, "build": {"source": "the team's build share", "sha256": "a" * 64}}
+        c = self.checks(modules=["mobile"], mobile=mobile)
+        for tool in ("maestro", "adb", "emulator", "build"):
+            self.assertTrue(c[tool][0], (tool, c))
+        self.assertIn("sha256", c["build"][1])
+        self.android = {"adb": None, "emulator": None}
+        self.found.pop("maestro")
+        c = self.checks(modules=["mobile"], mobile=MOBILE)
+        for tool in ("maestro", "adb", "emulator", "build"):
+            self.assertFalse(c[tool][0], (tool, c))
+        self.assertIn("setup_emulator.py", c["adb"][1])
+        self.assertIn("mobile.build.source", c["build"][1])
+        # a real device: no emulator needed
+        c = self.checks(modules=["mobile"], mobile={**MOBILE, "serial": "R58M123ABC"})
+        self.assertTrue(c["emulator"][0])
+
+    def test_mobile_input_driver_is_read_on_the_device(self):
+        """mobile.input driver (plan 11.7): the companion driver installed and its service on, read with adb."""
+        mobile = {**MOBILE, "serial": "R58M123ABC", "input": "driver"}
+        answers = {"pm": "package:io.qaassistant.driver\n",
+                   "settings": "com.example.reader/.Svc:io.qaassistant.driver/io.qaassistant.driver.DriverService\n"}
+        asked = []
+
+        def run(cmd, **kw):
+            asked.append(cmd)
+            return mock.Mock(returncode=0, stdout=answers.get(cmd[4], ""))
+        with mock.patch.object(vp.subprocess, "run", side_effect=run):
+            ok, detail = self.checks(modules=["mobile"], mobile=mobile)["android-driver"]
+            self.assertTrue(ok, detail)
+            self.assertEqual(asked[0][:3], ["/sdk/platform-tools/adb", "-s", "R58M123ABC"])
+            self.assertTrue(all(c[3] == "shell" and c[4] in ("pm", "settings") for c in asked))  # read only
+            answers["settings"] = "null\n"
+            ok, detail = self.checks(modules=["mobile"], mobile=mobile)["android-driver"]
+            self.assertFalse(ok)
+            self.assertIn("service is off", detail)
+            answers["pm"] = ""
+            ok, detail = self.checks(modules=["mobile"], mobile=mobile)["android-driver"]
+            self.assertIn("not installed", detail)
+        with mock.patch.object(vp.subprocess, "run", return_value=mock.Mock(returncode=1, stdout="")):
+            ok, detail = self.checks(modules=["mobile"], mobile=mobile)["android-driver"]
+            self.assertFalse(ok)
+            self.assertIn("no device answered", detail)
+        self.assertNotIn("android-driver", self.checks(modules=["mobile"], mobile=MOBILE))
+
+    def test_mobile_runner_overrides_the_phone_and_the_driver(self):
+        """A runner (plan 11.8): QA_MOBILE_SERIAL / QA_MOBILE_INPUT over mobile.serial / mobile.input; with adb the
+        driver is not required and the emulator is; an input outside adb | driver is a problem, never ignored."""
+        mobile = {**MOBILE, "serial": "R58M123ABC", "input": "driver"}
+        with mock.patch.dict(os.environ, {"QA_MOBILE_SERIAL": "emulator-5554", "QA_MOBILE_INPUT": "adb"}), \
+                mock.patch.object(vp.subprocess, "run") as run:
+            c = self.checks(modules=["mobile"], mobile=mobile)
+        run.assert_not_called()
+        self.assertNotIn("android-driver", c)
+        self.assertEqual(c["emulator"], (True, "/sdk/emulator/emulator"))
+        self.android["emulator"] = None
+        with mock.patch.dict(os.environ, {"QA_MOBILE_SERIAL": "emulator-5554", "QA_MOBILE_INPUT": "adb"}):
+            self.assertFalse(self.checks(modules=["mobile"], mobile=mobile)["emulator"][0])
+        # only the serial overridden: the driver is still read, on the serial of the variable
+        with mock.patch.dict(os.environ, {"QA_MOBILE_SERIAL": "R9DEMO"}), \
+                mock.patch.object(vp.subprocess, "run", return_value=mock.Mock(returncode=1, stdout="")) as run:
+            ok, detail = self.checks(modules=["mobile"], mobile=mobile)["android-driver"]
+        self.assertFalse(ok)
+        self.assertEqual(run.call_args[0][0][:3], ["/sdk/platform-tools/adb", "-s", "R9DEMO"])
+        with mock.patch.dict(os.environ, {"QA_MOBILE_INPUT": "scrcpy"}):
+            ok, detail = self.checks(modules=["mobile"], mobile=mobile)["mobile input"]
+        self.assertFalse(ok)
+        self.assertIn("QA_MOBILE_INPUT 'scrcpy'", detail)
+
+    def test_mobile_web_and_ios(self):
+        c = self.checks(modules=["mobile"], mobile={"platform": "web", "flows": "flows"})
+        self.assertEqual({t for t in c if t in ("maestro", "adb", "emulator", "build", "xcrun")}, {"maestro"})
+        self.found.pop("xcrun")
+        c = self.checks(modules=["mobile"], mobile={**MOBILE, "platform": "ios"})
+        self.assertFalse(c["xcrun"][0])
+        self.assertNotIn("adb", c)
+
+    def test_accessibility_needs_qa_audit_and_its_browser(self):
+        a11y = {"pages": [{"name": "home", "url": "https://shop.demo/"}]}
+        c = self.checks(modules=["accessibility"], accessibility=a11y)
+        self.assertTrue(c["qa-audit"][0] and c["browser chromium"][0], c)
+        ok, detail = self.checks(modules=["accessibility"], accessibility={**a11y, "browser": "firefox"})[
+            "browser firefox"]
+        self.assertFalse(ok)
+        self.assertIn("playwright install firefox", detail)
+        with mock.patch.object(vp, "qa_audit_installed", lambda: False):
+            c = self.checks(modules=["accessibility"], accessibility=a11y)
+        self.assertFalse(c["qa-audit"][0])
+        self.assertIn("pip install -e .", c["qa-audit"][1])
+        self.assertFalse(c["browser chromium"][0])
+
+    def test_playwright_browsers_reads_the_doctors_folders(self):
+        import importlib.util as iu
+        if iu.find_spec("qa_audit") is None:
+            self.skipTest("qa-audit is not installed")
+        folder = os.path.join(self.ws, "pw")
+        os.makedirs(os.path.join(folder, "chromium_headless_shell-1"))
+        os.makedirs(os.path.join(folder, "webkit-2"))
+        with mock.patch.dict(os.environ, {"PLAYWRIGHT_BROWSERS_PATH": folder}):
+            self.assertEqual(REAL["playwright_browsers"](), {"chromium", "webkit"})
+
+    def test_api_needs_nothing_beyond_python(self):
+        c = self.checks(modules=["api"], api={"base_url": "https://shop.demo"})
+        self.assertEqual(set(c), {"git", "python", ".env", "skills"})
+
+    def run_main(self, *args):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            rc = vp.main([self.ws, *args])
+        return rc, out.getvalue()
+
+    def test_missing_tools_are_warnings_unless_strict(self):
+        os.makedirs(os.path.join(self.ws, ".claude"))
+        shutil.copy(os.path.join(ROOT, "docs", "workspace", "settings.json"), os.path.join(self.ws, ".claude"))
+        self.project(modules=["mobile"], mobile={**MOBILE, "build": {"source": "share"}})
+        self.found.pop("maestro")
+        rc, out = self.run_main("--environment")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("[missing] maestro: ", out)
+        self.assertIn("[ok] adb: ", out)
+        self.assertIn("environment: 1 missing", out)
+        rc, out = self.run_main("--environment", "--strict")
+        self.assertEqual(rc, 1, out)
+        self.found["maestro"] = "/bin/maestro"
+        self.assertEqual(self.run_main("--environment", "--strict")[0], 0)
+        rc, out = self.run_main()
+        self.assertEqual(rc, 0)
+        self.assertNotIn("[ok]", out)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as e:
+            vp.main([self.ws, "--strict"])
+        self.assertEqual(e.exception.code, 2)
+
+
+class Demo(unittest.TestCase):
+    def test_the_demo_passes(self):
+        # a copy of the demo's project.yaml and workbook (the original is only read)
+        tmp = tempfile.mkdtemp()
+        try:
+            demo = os.path.join(ROOT, "examples", "demo")
+            shutil.copy(os.path.join(demo, "project.yaml"), tmp)
+            shutil.copytree(os.path.join(demo, ".claude"), os.path.join(tmp, ".claude"))
+            os.makedirs(os.path.join(tmp, "workbook"))
+            shutil.copy(os.path.join(demo, "workbook", "demo-plan.xlsx"), os.path.join(tmp, "workbook"))
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                rc = vp.main([tmp])
+            self.assertEqual(rc, 0, out.getvalue())
+            self.assertIn("0 problem(s), 0 warning(s)", out.getvalue())
+            # --environment reads this computer (read only) and, without --strict, never changes the exit code
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                rc = vp.main([tmp, "--environment"])
+            self.assertEqual(rc, 0, out.getvalue())
+            self.assertIn("environment: ", out.getvalue())
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_without_a_project_exits_with_2(self):
+        with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(vp.main([tmp]), 2)
+
+    def test_a_workspace_from_before_the_translation_says_how_to_convert_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "projeto.yaml"), "w", encoding="utf-8") as f:
+                f.write("projeto: x\n")
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(vp.main([tmp]), 2)
+        self.assertIn("migrate_workspace.py", err.getvalue())
+
+
+class SpecsSection(unittest.TestCase):
+    """The optional specs: section (docs/technique-specs.md): absent changes nothing; a private location is only ever
+    named by its .env variable."""
+    PRIVATE = "https://private.example/spec/k3y-NOT-TO-BE-SHOWN"
+    SPECS: typing.ClassVar[dict] = {"kind": "artifact", "location_var": "SHOP_SPEC_URL", "index": "_index.md",
+             "divergence_prefixes": ["DIV-M-"], "rule_id": "r-[0-9a-f]{8}"}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def env(self, text):
+        with open(os.path.join(self.tmp.name, ".env"), "w", encoding="utf-8") as f:
+            f.write(text)
+
+    def environment(self, proj):
+        with mock.patch.object(vp, "which", return_value="/bin/tool"):
+            return vp.environment(self.tmp.name, proj)
+
+    def test_without_specs_nothing_is_checked_or_shown(self):
+        self.assertEqual(vp.specs_section(dict(BASE)), ([], []))
+        self.assertEqual(vp.base_problems(dict(BASE)), vp.base_problems({**BASE}))
+        self.assertNotIn("spec source", [tool for _, tool, _ in self.environment(dict(BASE))])
+
+    def test_a_valid_section_has_no_problem_and_names_its_variable(self):
+        proj = {**BASE, "specs": dict(self.SPECS)}
+        self.assertEqual(vp.specs_section(proj), ([], []))
+        from common import variable_names
+        self.assertIn("SHOP_SPEC_URL", variable_names(proj))           # .env and .env.example must name it
+
+    def test_the_private_location_is_never_shown(self):
+        proj = {**BASE, "specs": dict(self.SPECS)}
+        ok, tool, detail = vp.spec_source(self.tmp.name, proj)
+        self.assertEqual((ok, tool), (False, "spec source"))
+        self.assertIn("SHOP_SPEC_URL", detail)
+        self.env(f"SHOP_SPEC_URL={self.PRIVATE}\n")
+        lines = [x for x in self.environment(proj) if x[1] == "spec source"]
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0][0])
+        self.assertNotIn(self.PRIVATE, repr(self.environment(proj)))
+        self.assertIn("value not shown", lines[0][2])
+
+    def test_wrong_sections_are_problems(self):
+        cases = {"kind": {**self.SPECS, "kind": "wiki"},
+                 "exactly one": {**self.SPECS, "location": "org/spec"},
+                 "exactly one ": {"kind": "git", "index": "_index.md"},
+                 "NAME of a .env variable": {**self.SPECS, "location_var": "https://x"},
+                 "divergence_prefixes": {**self.SPECS, "divergence_prefixes": "DIV-M-"},
+                 "regular expression": {**self.SPECS, "rule_id": "r-[0-9"}}
+        for expected, specs in cases.items():
+            with self.subTest(expected=expected):
+                problems, _ = vp.specs_section({**BASE, "specs": specs})
+                self.assertTrue(any(expected.strip() in p for p in problems), problems)
+        self.assertEqual(vp.specs_section({**BASE, "specs": "x"})[0], [("specs: expected a map (technique-specs.md "
+                                                                        "section 1)")])
+
+    def test_a_link_written_in_project_yaml_is_warned(self):
+        specs = {"kind": "artifact", "location": "https://claude.example/artifact/x", "index": "_index.md"}
+        problems, warnings = vp.specs_section({**BASE, "specs": specs})
+        self.assertEqual(problems, [])
+        self.assertTrue(any("location_var" in w for w in warnings))
+
+    def test_an_export_is_a_dated_copy_of_unconfirmed_currency(self):
+        specs = {"kind": "export", "location": "docs/spec_export", "index": "_index.md"}
+        self.assertFalse(vp.spec_source(self.tmp.name, {"specs": specs})[0])
+        os.makedirs(os.path.join(self.tmp.name, "docs", "spec_export"))
+        ok, _, detail = vp.spec_source(self.tmp.name, {"specs": specs})
+        self.assertTrue(ok)
+        self.assertIn("not confirmed", detail)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class WriteGuardSection(unittest.TestCase):
+    """write_guard.bugs (technique-ado-write-guard.md, «Final preview of a bug's fields»): the guard's own validation."""
+
+    def problems(self, section):
+        return [p for p in vp.base_problems({**BASE, "write_guard": section})[0] if "write_guard" in p]
+
+    def test_a_valid_mapping_has_no_problem_and_none_is_optional(self):
+        ok = {"bugs": {"labels": {"system_info": "System Info"},
+                       "fields": {"actual_result": {"reference": "Custom.ActualResult", "label": "Actual", "required": True}},
+                       "checks": {"repro_steps": [{"name": "steps", "pattern": "<ol>"}]}}}
+        self.assertEqual(self.problems(ok), [])
+        self.assertFalse([p for p in vp.base_problems(dict(BASE))[0] if "write_guard" in p])
+
+    def test_a_management_field_or_an_unknown_key_is_a_problem(self):
+        for section in ({"bugs": {"fields": {"x": "System.AssignedTo"}}},
+                        {"bugs": {"fields": {"x": "Microsoft.VSTS.Common.Severity"}}}, {"bugs": {"colour": 1}}, {"other": {}}, "x"):
+            with self.subTest(section=section):
+                self.assertTrue(self.problems(section))
+
+
+class QuarantineSection(unittest.TestCase):
+    """quarantine.excluded_label (procedures/quarantine.md): the only words of the project the report needs."""
+
+    def test_the_label_is_accepted_and_anything_else_is_a_problem(self):
+        self.assertFalse([p for p in vp.base_problems({**BASE, "quarantine": {"excluded_label": "excluído por quarentena"}})[0]
+                          if "quarantine" in p])
+        for section in ({"excluded_label": 3}, {"label": "x"}, "x"):
+            with self.subTest(section=section):
+                self.assertTrue([p for p in vp.base_problems({**BASE, "quarantine": section})[0] if "quarantine" in p])
